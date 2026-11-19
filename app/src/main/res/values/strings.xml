@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MoonSuivi</string>
+    <string name="accessibility_label">MoonSuivi – enregistrement des appels</string>
+    <string name="accessibility_description">Permet à MoonSuivi d\'enregistrer automatiquement vos appels entrants et sortants. Aucune donnée de l\'écran n\'est lue.</string>
+</resources>

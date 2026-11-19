@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.MoonSuivi" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#FF303F9F</item>
+        <item name="android:colorPrimary">#FF3F51B5</item>
+        <item name="android:colorAccent">#FF00897B</item>
+    </style>
+</resources>
