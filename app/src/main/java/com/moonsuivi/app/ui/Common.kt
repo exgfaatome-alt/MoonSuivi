@@ -1,6 +1,8 @@
 package com.moonsuivi.app.ui
 
+import android.Manifest
 import android.app.DatePickerDialog
+import android.content.pm.PackageManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -37,7 +39,8 @@ sealed class Ecran {
     object Agenda : Ecran()
     object Sujets : Ecran()
     object Contacts : Ecran()
-    object Appels : Ecran()
+    object Echanges : Ecran()
+    object Reglages : Ecran()
     data class SujetDetail(val id: Long) : Ecran()
     data class ContactDetail(val id: Long) : Ecran()
 }
@@ -79,15 +82,26 @@ fun couleurStatut(s: StatutSujet): Color = when (s) {
 }
 
 // ---------- Actions système ----------
+/** Appelle directement (permission « Appels ») sinon ouvre le clavier avec le numéro. */
 fun appeler(ctx: Context, numero: String) {
     val n = numero.split('/', ',', ';').first().trim()
     if (n.isBlank()) return
-    runCatching { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(n)))) }
+    val direct = ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
+    val action = if (direct) Intent.ACTION_CALL else Intent.ACTION_DIAL
+    runCatching { ctx.startActivity(Intent(action, Uri.parse("tel:" + Uri.encode(n)))) }
 }
 
-fun ecrireEmail(ctx: Context, email: String) {
+/** Ouvre l'appli e-mail du téléphone avec le message prérempli. */
+fun ecrireEmail(ctx: Context, email: String, objet: String = "", texte: String = "") {
     if (email.isBlank()) return
-    runCatching { ctx.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + email.trim()))) }
+    val uri = Uri.parse(
+        "mailto:" + Uri.encode(email.trim()) +
+            "?subject=" + Uri.encode(objet) + "&body=" + Uri.encode(texte)
+    )
+    val i = Intent(Intent.ACTION_SENDTO, uri)
+        .putExtra(Intent.EXTRA_SUBJECT, objet)
+        .putExtra(Intent.EXTRA_TEXT, texte)
+    runCatching { ctx.startActivity(i) }
 }
 
 fun accessibiliteActive(ctx: Context): Boolean {
@@ -164,6 +178,7 @@ fun FormDialog(
     onSave: () -> Unit,
     saveEnabled: Boolean = true,
     onDelete: (() -> Unit)? = null,
+    libelleOk: String = "Enregistrer",
     content: @Composable ColumnScope.() -> Unit
 ) {
     var confirmer by remember { mutableStateOf(false) }
@@ -178,7 +193,7 @@ fun FormDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = onSave, enabled = saveEnabled) { Text("Enregistrer") }
+            TextButton(onClick = onSave, enabled = saveEnabled) { Text(libelleOk) }
         },
         dismissButton = {
             Row {

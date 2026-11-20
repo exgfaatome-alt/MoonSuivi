@@ -130,6 +130,10 @@ fun ContactDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
     val contact = rememberData(id) { Repo.contact(id) }
     val taches = rememberData(id) { Repo.tachesContact(id) }
     val appels = rememberData(id) { Repo.appelsContact(id) }
+    val echanges = rememberData(id) { Repo.echangesContact(id) }
+    val historique = remember(appels, echanges) { fusionner(appels, echanges) }
+    var redaction by remember { mutableStateOf<Pair<TypeMessage, String?>?>(null) }
+    var editEchange by remember { mutableStateOf<Echange?>(null) }
     val sujets = rememberData { Repo.sujets() }
     val nomSujet = remember(sujets) { sujets.associate { it.id to it.titre } }
     var edit by remember { mutableStateOf(false) }
@@ -141,8 +145,8 @@ fun ContactDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
         return
     }
 
-    val sujetsLies = remember(taches, appels) {
-        (taches.mapNotNull { it.sujetId } + appels.mapNotNull { it.sujetId }).distinct()
+    val sujetsLies = remember(taches, appels, echanges) {
+        (taches.mapNotNull { it.sujetId } + appels.mapNotNull { it.sujetId } + echanges.mapNotNull { it.sujetId }).distinct()
     }
 
     LazyColumn(
@@ -166,15 +170,18 @@ fun ContactDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
                             Icon(Icons.Default.Phone, null)
                             Spacer(Modifier.width(8.dp))
                             Text(num, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { redaction = TypeMessage.SMS to num }) {
+                                Icon(Icons.Default.Send, "Envoyer un SMS")
+                            }
                             FilledTonalButton(onClick = { appeler(ctx, num) }) { Text("Appeler") }
                         }
                     }
-                    if (contact.email.isNotBlank()) {
+                    emailsDe(contact).forEach { mail ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Email, null)
                             Spacer(Modifier.width(8.dp))
-                            Text(contact.email, modifier = Modifier.weight(1f))
-                            FilledTonalButton(onClick = { ecrireEmail(ctx, contact.email) }) { Text("Écrire") }
+                            Text(mail, modifier = Modifier.weight(1f))
+                            FilledTonalButton(onClick = { redaction = TypeMessage.EMAIL to mail }) { Text("E-mail") }
                         }
                     }
                     if (contact.notes.isNotBlank()) {
@@ -215,14 +222,24 @@ fun ContactDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
             )
         }
 
-        item { SectionTitre("Appels (${appels.size})") }
-        if (appels.isEmpty()) item { Vide("Aucun appel enregistré avec ce contact.") }
-        items(appels, key = { "a${it.id}" }) { a ->
-            AppelLigne(a, null) { editAppel = a }
+        item {
+            SectionTitre("Échanges (${historique.size})") {
+                IconButton(onClick = { redaction = TypeMessage.EMAIL to null }) {
+                    Icon(Icons.Default.Send, "Nouveau message")
+                }
+            }
+        }
+        if (historique.isEmpty()) item { Vide("Aucun appel, e-mail ou SMS avec ce contact.") }
+        items(historique, key = { it.cle }) { l ->
+            LigneHistorique(l, emptyMap(), { editAppel = it }, { editEchange = it })
         }
     }
 
     if (edit) ContactDialog(contact) { edit = false }
     editTache?.let { TacheDialog(it) { editTache = null } }
     editAppel?.let { AppelDialog(it) { editAppel = null } }
+    editEchange?.let { EchangeDialog(it) { editEchange = null } }
+    redaction?.let { (type, dest) ->
+        MessageDialog(type = type, contactId = id, destination = dest, onDismiss = { redaction = null })
+    }
 }

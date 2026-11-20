@@ -113,6 +113,9 @@ private sealed class Evenement {
     data class A(val appel: Appel) : Evenement() {
         override val date: Long get() = appel.date
     }
+    data class E(val echange: Echange) : Evenement() {
+        override val date: Long get() = echange.date
+    }
 }
 
 @Composable
@@ -121,6 +124,10 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
     val taches = rememberData(id) { Repo.tachesSujet(id) }
     val notes = rememberData(id) { Repo.notes(id) }
     val appels = rememberData(id) { Repo.appelsSujet(id) }
+    val echanges = rememberData(id) { Repo.echangesSujet(id) }
+    var redaction by remember { mutableStateOf<TypeMessage?>(null) }
+    var choixAppel by remember { mutableStateOf(false) }
+    var editEchange by remember { mutableStateOf<Echange?>(null) }
     val contacts = rememberData { Repo.contacts() }
     val nomContact = remember(contacts) { contacts.associate { it.id to it.nom } }
     var editSujet by remember { mutableStateOf(false) }
@@ -133,11 +140,13 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
         return
     }
 
-    val journal = remember(notes, appels) {
-        (notes.map { Evenement.N(it) } + appels.map { Evenement.A(it) }).sortedByDescending { it.date }
+    val journal = remember(notes, appels, echanges) {
+        (notes.map { Evenement.N(it) } + appels.map { Evenement.A(it) } + echanges.map { Evenement.E(it) })
+            .sortedByDescending { it.date }
     }
-    val contactsLies = remember(taches, appels) {
-        (taches.mapNotNull { it.contactId } + appels.mapNotNull { it.contactId }).distinct()
+    val contactsLies = remember(taches, appels, echanges) {
+        (taches.mapNotNull { it.contactId } + appels.mapNotNull { it.contactId } + echanges.mapNotNull { it.contactId })
+            .distinct()
     }
 
     LazyColumn(
@@ -170,6 +179,13 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
                         sujet.statut,
                         { Repo.saveSujet(sujet.copy(statut = it)) }
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = { choixAppel = true }) {
+                            Icon(Icons.Default.Phone, null); Spacer(Modifier.width(4.dp)); Text("Appeler")
+                        }
+                        FilledTonalButton(onClick = { redaction = TypeMessage.SMS }) { Text("SMS") }
+                        FilledTonalButton(onClick = { redaction = TypeMessage.EMAIL }) { Text("E-mail") }
+                    }
                     Text(
                         "Créé le ${jour(sujet.createdAt)} · mis à jour le ${jourHeure(sujet.updatedAt)}",
                         style = MaterialTheme.typography.labelSmall,
@@ -225,11 +241,18 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
                 ) { Icon(Icons.Default.Send, "Ajouter la note") }
             }
         }
-        if (journal.isEmpty()) item { Vide("Aucune note ni appel rattaché.") }
-        items(journal, key = { e -> if (e is Evenement.N) "n${e.note.id}" else "a${(e as Evenement.A).appel.id}" }) { e ->
+        if (journal.isEmpty()) item { Vide("Aucune note, appel ou message rattaché.") }
+        items(journal, key = { e ->
+            when (e) {
+                is Evenement.N -> "n${e.note.id}"
+                is Evenement.A -> "a${e.appel.id}"
+                is Evenement.E -> "e${e.echange.id}"
+            }
+        }) { e ->
             when (e) {
                 is Evenement.N -> NoteLigne(e.note) { Repo.deleteNote(e.note.id) }
                 is Evenement.A -> AppelLigne(e.appel, e.appel.contactId?.let { nomContact[it] }) { editAppel = e.appel }
+                is Evenement.E -> EchangeLigne(e.echange, e.echange.contactId?.let { nomContact[it] }) { editEchange = e.echange }
             }
         }
     }
@@ -237,6 +260,17 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
     if (editSujet) SujetDialog(sujet) { editSujet = false }
     editTache?.let { TacheDialog(it) { editTache = null } }
     editAppel?.let { AppelDialog(it) { editAppel = null } }
+    editEchange?.let { EchangeDialog(it) { editEchange = null } }
+    if (choixAppel) ChoixAppelDialog(contactsLies) { choixAppel = false }
+    redaction?.let { t ->
+        MessageDialog(
+            type = t,
+            contactId = contactsLies.firstOrNull(),
+            sujetId = id,
+            objet = if (t == TypeMessage.EMAIL) sujet.titre else "",
+            onDismiss = { redaction = null }
+        )
+    }
 }
 
 @Composable

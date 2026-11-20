@@ -8,10 +8,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import com.moonsuivi.app.data.*
 
-private fun optionsSujets(sujets: List<Sujet>): List<Pair<Long?, String>> =
+fun optionsSujets(sujets: List<Sujet>): List<Pair<Long?, String>> =
     listOf<Pair<Long?, String>>(null to "Aucun") + sujets.map { it.id to it.titre }
 
-private fun optionsContacts(contacts: List<Contact>): List<Pair<Long?, String>> =
+fun optionsContacts(contacts: List<Contact>): List<Pair<Long?, String>> =
     listOf<Pair<Long?, String>>(null to "Aucun") + contacts.map { it.id to it.nom }
 
 @Composable

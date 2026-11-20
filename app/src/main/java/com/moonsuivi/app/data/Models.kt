@@ -72,3 +72,25 @@ data class NoteSujet(
     val texte: String,
     val date: Long = System.currentTimeMillis()
 )
+
+/** E-mails et SMS échangés avec un contact. */
+enum class Canal(val label: String, val icone: String) {
+    EMAIL_RECU("E-mail reçu", "📥"),
+    EMAIL_ENVOYE("E-mail envoyé", "📤"),
+    SMS_RECU("SMS reçu", "💬"),
+    SMS_ENVOYE("SMS envoyé", "✉️");
+
+    val estEmail: Boolean get() = this == EMAIL_RECU || this == EMAIL_ENVOYE
+}
+
+data class Echange(
+    val id: Long = 0,
+    val canal: Canal = Canal.EMAIL_RECU,
+    val contactId: Long? = null,
+    val sujetId: Long? = null,
+    val adresse: String = "",
+    val objet: String = "",
+    val contenu: String = "",
+    val date: Long = System.currentTimeMillis(),
+    val messageId: String? = null
+)

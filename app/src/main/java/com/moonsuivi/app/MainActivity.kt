@@ -1,5 +1,6 @@
 package com.moonsuivi.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -12,17 +13,53 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.moonsuivi.app.calls.Lecteur
+import com.moonsuivi.app.data.Canal
+import com.moonsuivi.app.data.Echange
+import com.moonsuivi.app.data.Prefs
 import com.moonsuivi.app.data.Repo
+import com.moonsuivi.app.mail.MailWorker
+import com.moonsuivi.app.update.InfoMaj
+import com.moonsuivi.app.update.MiseAJour
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.moonsuivi.app.ui.*
 
 class MainActivity : ComponentActivity() {
+    /** E-mail / texte partagé depuis une autre appli (bouton « Partager »). */
+    private val partage = mutableStateOf<Echange?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Repo.init(this)
-        setContent { MoonSuiviTheme { App() } }
+        MailWorker.planifier(this)
+        if (savedInstanceState == null) lirePartage(intent)
+        setContent { MoonSuiviTheme { App(partage) } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        lirePartage(intent)
+    }
+
+    private fun lirePartage(i: Intent?) {
+        if (i == null || i.action != Intent.ACTION_SEND) return
+        if (i.type?.startsWith("text/") != true) return
+        val objet = i.getStringExtra(Intent.EXTRA_SUBJECT) ?: ""
+        val texte = i.getStringExtra(Intent.EXTRA_TEXT) ?: ""
+        val adresse = Regex("[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+").find(texte)?.value ?: ""
+        val contact = if (adresse.isNotBlank()) Repo.findContactByEmail(adresse) else null
+        partage.value = Echange(
+            canal = Canal.EMAIL_RECU,
+            contactId = contact?.id,
+            sujetId = contact?.let { Repo.sujetDuFil(it.id, objet) },
+            adresse = adresse,
+            objet = objet,
+            contenu = texte.take(8000)
+        )
     }
 
     override fun onStop() {
@@ -56,12 +93,25 @@ private val ONGLETS = listOf(
     Onglet(Ecran.Agenda, "Agenda", Icons.Default.DateRange),
     Onglet(Ecran.Sujets, "Sujets", Icons.Default.Star),
     Onglet(Ecran.Contacts, "Contacts", Icons.Default.Person),
-    Onglet(Ecran.Appels, "Appels", Icons.Default.Call)
+    Onglet(Ecran.Echanges, "Échanges", Icons.Default.Email)
 )
 
 @Composable
-fun App() {
+fun App(partage: MutableState<Echange?>) {
+    val ctx = LocalContext.current
     var pile by remember { mutableStateOf(listOf<Ecran>(Ecran.Tableau)) }
+    var maj by remember { mutableStateOf<InfoMaj?>(null) }
+
+    // Vérification automatique des mises à jour (au plus toutes les 6 h)
+    LaunchedEffect(Unit) {
+        if (Prefs.majAuto(ctx) && System.currentTimeMillis() - Prefs.majDerniereVerif(ctx) > 6L * 3600 * 1000) {
+            val info = withContext(Dispatchers.IO) {
+                runCatching { MiseAJour.verifier(Prefs.majUrl(ctx)) }.getOrNull()
+            }
+            Prefs.setMajDerniereVerif(ctx, System.currentTimeMillis())
+            if (info != null) maj = info
+        }
+    }
     val courant = pile.last()
     val ouvrir: (Ecran) -> Unit = { pile = pile + it }
     val retour: () -> Unit = { if (pile.size > 1) pile = pile.dropLast(1) }
@@ -73,7 +123,8 @@ fun App() {
         Ecran.Agenda -> "Agenda"
         Ecran.Sujets -> "Suivi des sujets"
         Ecran.Contacts -> "Contacts"
-        Ecran.Appels -> "Appels"
+        Ecran.Echanges -> "Appels, e-mails et SMS"
+        Ecran.Reglages -> "Réglages"
         is Ecran.SujetDetail -> "Sujet"
         is Ecran.ContactDetail -> "Contact"
     }
@@ -82,6 +133,13 @@ fun App() {
         topBar = {
             TopAppBar(
                 title = { Text(titre) },
+                actions = {
+                    if (courant != Ecran.Reglages) {
+                        IconButton(onClick = { pile = pile + Ecran.Reglages }) {
+                            Icon(Icons.Default.Settings, "Réglages", tint = MaterialTheme.colorScheme.onPrimary)
+                        }
+                    }
+                },
                 navigationIcon = {
                     if (pile.size > 1) {
                         IconButton(onClick = retour) { Icon(Icons.Default.ArrowBack, "Retour") }
@@ -113,10 +171,14 @@ fun App() {
                 Ecran.Agenda -> AgendaScreen()
                 Ecran.Sujets -> SujetsScreen(ouvrir)
                 Ecran.Contacts -> ContactsScreen(ouvrir)
-                Ecran.Appels -> AppelsScreen()
+                Ecran.Echanges -> EchangesScreen()
+                Ecran.Reglages -> ReglagesScreen { maj = it }
                 is Ecran.SujetDetail -> key(e.id) { SujetDetailScreen(e.id, ouvrir) }
                 is Ecran.ContactDetail -> key(e.id) { ContactDetailScreen(e.id, ouvrir) }
             }
         }
     }
+
+    maj?.let { MajDialog(it) { maj = null } }
+    partage.value?.let { EchangeDialog(it) { partage.value = null } }
 }

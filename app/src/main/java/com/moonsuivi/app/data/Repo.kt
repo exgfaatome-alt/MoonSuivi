@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import java.io.File
 
-private class Db(ctx: Context) : SQLiteOpenHelper(ctx, "moonsuivi.db", null, 1) {
+private class Db(ctx: Context) : SQLiteOpenHelper(ctx, "moonsuivi.db", null, 2) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             "CREATE TABLE sujets(id INTEGER PRIMARY KEY AUTOINCREMENT, titre TEXT NOT NULL, " +
@@ -40,9 +40,23 @@ private class Db(ctx: Context) : SQLiteOpenHelper(ctx, "moonsuivi.db", null, 1) 
         db.execSQL("CREATE INDEX idx_taches_echeance ON taches(echeance)")
         db.execSQL("CREATE INDEX idx_appels_date ON appels(date)")
         db.execSQL("CREATE INDEX idx_notes_sujet ON notes(sujet_id)")
+        creerEchanges(db)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+    private fun creerEchanges(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS echanges(id INTEGER PRIMARY KEY AUTOINCREMENT, canal TEXT NOT NULL, " +
+                "contact_id INTEGER, sujet_id INTEGER, adresse TEXT NOT NULL DEFAULT '', objet TEXT NOT NULL DEFAULT '', " +
+                "contenu TEXT NOT NULL DEFAULT '', date INTEGER NOT NULL, message_id TEXT)"
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_echanges_mid ON echanges(message_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_echanges_date ON echanges(date)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_echanges_contact ON echanges(contact_id)")
+    }
+
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) creerEchanges(db)
+    }
 }
 
 private fun Cursor.str(c: String): String = getString(getColumnIndexOrThrow(c)) ?: ""
@@ -58,6 +72,23 @@ private fun Cursor.strN(c: String): String? {
 
 private fun ContentValues.putN(k: String, v: Long?) {
     if (v == null) putNull(k) else put(k, v)
+}
+
+fun emailsDe(c: Contact): List<String> =
+    c.email.split(',', ';', ' ').map { it.trim() }.filter { it.contains('@') }
+
+fun telephonesDe(c: Contact): List<String> =
+    c.telephone.split('/', ',', ';').map { it.trim() }.filter { it.isNotBlank() }
+
+/** « RE: TR: Devis » -> « devis » */
+fun normaliserObjet(objet: String): String {
+    var o = objet.trim()
+    val prefixe = Regex("^(re|tr|fw|fwd|réf|ref|aw|wg)\\s*(\\[\\d+\\])?\\s*:\\s*", RegexOption.IGNORE_CASE)
+    while (true) {
+        val m = prefixe.find(o) ?: break
+        o = o.substring(m.range.last + 1).trim()
+    }
+    return o.lowercase()
 }
 
 /** Garde uniquement les 9 derniers chiffres (ignore +33 / 0). */
@@ -141,6 +172,7 @@ object Repo {
         w.delete("notes", "sujet_id=?", a)
         w.execSQL("UPDATE taches SET sujet_id=NULL WHERE sujet_id=?", arrayOf<Any>(id))
         w.execSQL("UPDATE appels SET sujet_id=NULL WHERE sujet_id=?", arrayOf<Any>(id))
+        w.execSQL("UPDATE echanges SET sujet_id=NULL WHERE sujet_id=?", arrayOf<Any>(id))
         notifyChanged()
     }
 
@@ -184,6 +216,7 @@ object Repo {
         w.delete("contacts", "id=?", arrayOf(id.toString()))
         w.execSQL("UPDATE taches SET contact_id=NULL WHERE contact_id=?", arrayOf<Any>(id))
         w.execSQL("UPDATE appels SET contact_id=NULL WHERE contact_id=?", arrayOf<Any>(id))
+        w.execSQL("UPDATE echanges SET contact_id=NULL WHERE contact_id=?", arrayOf<Any>(id))
         notifyChanged()
     }
 
@@ -332,6 +365,73 @@ object Repo {
 
     fun deleteNote(id: Long) {
         w.delete("notes", "id=?", arrayOf(id.toString()))
+        notifyChanged()
+    }
+
+    fun findContactByEmail(email: String): Contact? {
+        val e = email.trim()
+        if (e.isEmpty()) return null
+        return contacts().firstOrNull { ct -> emailsDe(ct).any { it.equals(e, ignoreCase = true) } }
+    }
+
+    // ---------- Échanges (e-mails / SMS) ----------
+    private fun echangeOf(c: Cursor) = Echange(
+        id = c.lng("id"),
+        canal = runCatching { Canal.valueOf(c.str("canal")) }.getOrDefault(Canal.EMAIL_RECU),
+        contactId = c.lngN("contact_id"),
+        sujetId = c.lngN("sujet_id"),
+        adresse = c.str("adresse"),
+        objet = c.str("objet"),
+        contenu = c.str("contenu"),
+        date = c.lng("date"),
+        messageId = c.strN("message_id")
+    )
+
+    fun echanges(): List<Echange> =
+        list("SELECT * FROM echanges ORDER BY date DESC LIMIT 500", null, ::echangeOf)
+
+    fun echangesContact(id: Long): List<Echange> =
+        list("SELECT * FROM echanges WHERE contact_id=? ORDER BY date DESC", arrayOf(id.toString()), ::echangeOf)
+
+    fun echangesSujet(id: Long): List<Echange> =
+        list("SELECT * FROM echanges WHERE sujet_id=? ORDER BY date DESC", arrayOf(id.toString()), ::echangeOf)
+
+    fun echangeExiste(messageId: String): Boolean =
+        r.rawQuery("SELECT COUNT(*) FROM echanges WHERE message_id=?", arrayOf(messageId)).use { c ->
+            c.moveToFirst() && c.getLong(0) > 0
+        }
+
+    /** Retrouve le sujet d'un fil de discussion : même contact + même objet (sans Re:, TR:...). */
+    fun sujetDuFil(contactId: Long, objet: String): Long? {
+        val o = normaliserObjet(objet)
+        if (o.isEmpty()) return null
+        return list(
+            "SELECT * FROM echanges WHERE contact_id=? AND sujet_id IS NOT NULL ORDER BY date DESC LIMIT 200",
+            arrayOf(contactId.toString()), ::echangeOf
+        ).firstOrNull { normaliserObjet(it.objet) == o }?.sujetId
+    }
+
+    fun saveEchange(e: Echange, notifier: Boolean = true): Long {
+        val cv = ContentValues().apply {
+            put("canal", e.canal.name)
+            putN("contact_id", e.contactId)
+            putN("sujet_id", e.sujetId)
+            put("adresse", e.adresse)
+            put("objet", e.objet)
+            put("contenu", e.contenu)
+            put("date", e.date)
+            if (e.messageId == null) putNull("message_id") else put("message_id", e.messageId)
+        }
+        val id = if (e.id == 0L) w.insertWithOnConflict("echanges", null, cv, SQLiteDatabase.CONFLICT_IGNORE) else {
+            w.update("echanges", cv, "id=?", arrayOf(e.id.toString())); e.id
+        }
+        toucherSujet(e.sujetId)
+        if (notifier) notifyChanged()
+        return id
+    }
+
+    fun deleteEchange(id: Long) {
+        w.delete("echanges", "id=?", arrayOf(id.toString()))
         notifyChanged()
     }
 }
