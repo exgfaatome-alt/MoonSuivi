@@ -53,6 +53,10 @@ object Prefs {
     fun mailErreur(ctx: Context): String? = p(ctx).getString("mail_erreur", null)
     fun setMailErreur(ctx: Context, v: String?) = p(ctx).edit().putString("mail_erreur", v).apply()
 
+    // ---------- Fonctionnement permanent ----------
+    fun resterActif(ctx: Context): Boolean = p(ctx).getBoolean("rester_actif", true)
+    fun setResterActif(ctx: Context, v: Boolean) = p(ctx).edit().putBoolean("rester_actif", v).apply()
+
     // ---------- Mises à jour ----------
     const val URL_MAJ_DEFAUT = "https://github.com/exgfaatome-alt/MoonSuivi/releases/latest/download/version.json"
 

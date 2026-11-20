@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -22,6 +23,10 @@ fun SujetsScreen(ouvrir: (Ecran) -> Unit) {
     var recherche by remember { mutableStateOf("") }
     var filtre by remember { mutableStateOf<StatutSujet?>(null) }
     var nouveau by remember { mutableStateOf(false) }
+    val categories = rememberData { Repo.categories() }
+    val parCategorie = remember(categories) { categories.associateBy { it.id } }
+    var filtreCat by remember { mutableStateOf<Long?>(null) }
+    var gererCategories by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -48,7 +53,36 @@ fun SujetsScreen(ouvrir: (Ecran) -> Unit) {
                     )
                 }
             }
+            // Catégories : -1 = sans catégorie
+            LazyRow(
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                item {
+                    FilterChip(selected = filtreCat == null, onClick = { filtreCat = null }, label = { Text("Toutes catégories") })
+                }
+                items(categories, key = { it.id }) { c ->
+                    FilterChip(
+                        selected = filtreCat == c.id,
+                        onClick = { filtreCat = if (filtreCat == c.id) null else c.id },
+                        label = { Text(c.nom) },
+                        leadingIcon = { Point(Color(c.couleur)) }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = filtreCat == -1L,
+                        onClick = { filtreCat = if (filtreCat == -1L) null else -1L },
+                        label = { Text("Sans catégorie") }
+                    )
+                }
+                item {
+                    TextButton(onClick = { gererCategories = true }) { Text("Gérer…") }
+                }
+            }
             val liste = sujets.filter {
+                (filtreCat == null || (filtreCat == -1L && it.categorieId == null) || it.categorieId == filtreCat) &&
                 (filtre == null || it.statut == filtre) &&
                     (recherche.isBlank() || it.titre.contains(recherche, true) || it.description.contains(recherche, true))
             }
@@ -58,7 +92,9 @@ fun SujetsScreen(ouvrir: (Ecran) -> Unit) {
             ) {
                 if (liste.isEmpty()) item { Vide("Aucun sujet. Appuyez sur + pour en créer un.") }
                 items(liste, key = { it.id }) { s ->
-                    SujetCarte(s, ouvertes[s.id] ?: 0) { ouvrir(Ecran.SujetDetail(s.id)) }
+                    SujetCarte(s, s.categorieId?.let { parCategorie[it] }, ouvertes[s.id] ?: 0) {
+                        ouvrir(Ecran.SujetDetail(s.id))
+                    }
                 }
             }
         }
@@ -68,11 +104,14 @@ fun SujetsScreen(ouvrir: (Ecran) -> Unit) {
         ) { Icon(Icons.Default.Add, "Nouveau sujet") }
     }
 
-    if (nouveau) SujetDialog(Sujet()) { nouveau = false }
+    if (nouveau) {
+        SujetDialog(Sujet(categorieId = filtreCat?.takeIf { it > 0 })) { nouveau = false }
+    }
+    if (gererCategories) CategoriesDialog { gererCategories = false }
 }
 
 @Composable
-private fun SujetCarte(s: Sujet, tachesOuvertes: Int, onClick: () -> Unit) {
+private fun SujetCarte(s: Sujet, categorie: Categorie?, tachesOuvertes: Int, onClick: () -> Unit) {
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -88,6 +127,7 @@ private fun SujetCarte(s: Sujet, tachesOuvertes: Int, onClick: () -> Unit) {
                 )
                 StatutBadge(s.statut)
             }
+            if (categorie != null) Pastille(categorie.nom, Color(categorie.couleur))
             if (s.description.isNotBlank()) {
                 Text(
                     s.description,
@@ -125,6 +165,8 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
     val notes = rememberData(id) { Repo.notes(id) }
     val appels = rememberData(id) { Repo.appelsSujet(id) }
     val echanges = rememberData(id) { Repo.echangesSujet(id) }
+    val categoriesDetail = rememberData { Repo.categories() }
+    val finies = LocalColonnes.current.filter { it.terminee }.map { it.id }.toSet()
     var redaction by remember { mutableStateOf<TypeMessage?>(null) }
     var choixAppel by remember { mutableStateOf(false) }
     var editEchange by remember { mutableStateOf<Echange?>(null) }
@@ -167,6 +209,9 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         StatutBadge(sujet.statut)
+                        sujet.categorieId?.let { cid -> categoriesDetail.firstOrNull { it.id == cid } }?.let { c ->
+                            Pastille(c.nom, Color(c.couleur))
+                        }
                         Pastille(
                             "Priorité " + (PRIORITES.firstOrNull { it.first == sujet.priorite }?.second ?: "").lowercase(),
                             couleurPriorite(sujet.priorite)
@@ -211,7 +256,7 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
         }
 
         item {
-            SectionTitre("Tâches (${taches.count { it.colonne != Colonne.TERMINE }} ouvertes / ${taches.size})") {
+            SectionTitre("Tâches (${taches.count { it.colonneId !in finies }} ouvertes / ${taches.size})") {
                 IconButton(onClick = { editTache = Tache(sujetId = id) }) { Icon(Icons.Default.Add, "Ajouter une tâche") }
             }
         }

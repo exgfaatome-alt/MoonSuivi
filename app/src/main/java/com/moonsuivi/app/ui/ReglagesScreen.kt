@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaRecorder
+import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,6 +27,7 @@ import com.moonsuivi.app.data.ConfigMail
 import com.moonsuivi.app.data.Prefs
 import com.moonsuivi.app.mail.Courrier
 import com.moonsuivi.app.mail.MailWorker
+import com.moonsuivi.app.service.ServiceActif
 import com.moonsuivi.app.update.InfoMaj
 import com.moonsuivi.app.update.MiseAJour
 import kotlinx.coroutines.Dispatchers
@@ -83,6 +85,12 @@ fun ReglagesScreen(onMaj: (InfoMaj) -> Unit) {
     val accessOk = remember(verif) { accessibiliteActive(ctx) }
     val demande = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { verif++ }
 
+    // Fonctionnement permanent
+    var resterActif by remember { mutableStateOf(Prefs.resterActif(ctx)) }
+    val batterieOk = remember(verif) { ServiceActif.batterieLibre(ctx) }
+    var colonnesOuvert by remember { mutableStateOf(false) }
+    var categoriesOuvert by remember { mutableStateOf(false) }
+
     // Appels
     var auto by remember { mutableStateOf(Prefs.autoRecord(ctx)) }
     var source by remember { mutableStateOf(Prefs.audioSource(ctx)) }
@@ -124,6 +132,50 @@ fun ReglagesScreen(onMaj: (InfoMaj) -> Unit) {
                     else "Activez le service d'accessibilité « MoonSuivi » (enregistrement audio des appels)",
                     action = "Activer"
                 ) { runCatching { ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } }
+            }
+        }
+
+        item {
+            Bloc("Rester actif en permanence") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Garder MoonSuivi actif en arrière-plan", modifier = Modifier.weight(1f))
+                    Switch(checked = resterActif, onCheckedChange = {
+                        resterActif = it
+                        Prefs.setResterActif(ctx, it)
+                        if (it) ServiceActif.demarrer(ctx) else ServiceActif.arreter(ctx)
+                        MailWorker.planifier(ctx)
+                    })
+                }
+                EtatLigne(
+                    ok = batterieOk,
+                    texte = if (batterieOk) "Optimisation de batterie désactivée pour MoonSuivi"
+                    else "Android peut mettre MoonSuivi en veille pour économiser la batterie",
+                    action = "Désactiver"
+                ) { ServiceActif.demanderBatterieLibre(ctx) }
+                Aide(
+                    "Une notification discrète « MoonSuivi est actif » reste affichée : c'est elle qui empêche " +
+                        "Android de fermer l'appli. MoonSuivi redémarre aussi tout seul après un redémarrage du téléphone. " +
+                        "Sur Xiaomi, Huawei, Oppo ou Samsung, autorisez aussi le « Démarrage automatique » / " +
+                        "« Activité en arrière-plan » dans les paramètres de l'appli."
+                )
+                TextButton(onClick = {
+                    runCatching {
+                        ctx.startActivity(
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ctx.packageName))
+                        )
+                    }
+                }) { Text("Ouvrir les paramètres de l'appli") }
+            }
+        }
+
+        item {
+            Bloc("Organisation") {
+                OutlinedButton(onClick = { colonnesOuvert = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Colonnes du tableau des tâches")
+                }
+                OutlinedButton(onClick = { categoriesOuvert = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Catégories de sujets")
+                }
             }
         }
 
@@ -279,6 +331,9 @@ fun ReglagesScreen(onMaj: (InfoMaj) -> Unit) {
             }
         }
     }
+
+    if (colonnesOuvert) ColonnesDialog { colonnesOuvert = false }
+    if (categoriesOuvert) CategoriesDialog { categoriesOuvert = false }
 }
 
 /** Fenêtre « Mise à jour disponible » : téléchargement puis lancement de l'installateur Android. */

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -22,6 +23,8 @@ import com.moonsuivi.app.data.Echange
 import com.moonsuivi.app.data.Prefs
 import com.moonsuivi.app.data.Repo
 import com.moonsuivi.app.mail.MailWorker
+import com.moonsuivi.app.service.ServiceActif
+import kotlinx.coroutines.launch
 import com.moonsuivi.app.update.InfoMaj
 import com.moonsuivi.app.update.MiseAJour
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +39,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Repo.init(this)
         MailWorker.planifier(this)
+        ServiceActif.demarrer(this)
         if (savedInstanceState == null) lirePartage(intent)
         setContent { MoonSuiviTheme { App(partage) } }
     }
@@ -88,19 +92,35 @@ fun MoonSuiviTheme(content: @Composable () -> Unit) {
 
 private data class Onglet(val ecran: Ecran, val label: String, val icone: ImageVector)
 
+/** Barre du bas : les écrans les plus utilisés. */
 private val ONGLETS = listOf(
-    Onglet(Ecran.Tableau, "Tableau", Icons.Default.List),
-    Onglet(Ecran.Agenda, "Agenda", Icons.Default.DateRange),
+    Onglet(Ecran.Accueil, "Accueil", Icons.Default.Home),
+    Onglet(Ecran.Tableau, "Tâches", Icons.Default.List),
     Onglet(Ecran.Sujets, "Sujets", Icons.Default.Star),
     Onglet(Ecran.Contacts, "Contacts", Icons.Default.Person),
     Onglet(Ecran.Echanges, "Échanges", Icons.Default.Email)
 )
 
+/** Menu latéral : tous les écrans. */
+private val MENU = listOf(
+    Onglet(Ecran.Accueil, "Tableau de bord", Icons.Default.Home),
+    Onglet(Ecran.Tableau, "Tâches (kanban)", Icons.Default.List),
+    Onglet(Ecran.Agenda, "Agenda", Icons.Default.DateRange),
+    Onglet(Ecran.Sujets, "Sujets", Icons.Default.Star),
+    Onglet(Ecran.Contacts, "Contacts", Icons.Default.Person),
+    Onglet(Ecran.Echanges, "Appels, e-mails, SMS", Icons.Default.Email),
+    Onglet(Ecran.Journal, "Journal", Icons.Default.Edit),
+    Onglet(Ecran.Reglages, "Réglages", Icons.Default.Settings)
+)
+
 @Composable
 fun App(partage: MutableState<Echange?>) {
     val ctx = LocalContext.current
-    var pile by remember { mutableStateOf(listOf<Ecran>(Ecran.Tableau)) }
+    val scope = rememberCoroutineScope()
+    val tiroir = rememberDrawerState(DrawerValue.Closed)
+    var pile by remember { mutableStateOf(listOf<Ecran>(Ecran.Accueil)) }
     var maj by remember { mutableStateOf<InfoMaj?>(null) }
+    val colonnes = rememberData { Repo.colonnes() }
 
     // Vérification automatique des mises à jour (au plus toutes les 6 h)
     LaunchedEffect(Unit) {
@@ -115,70 +135,108 @@ fun App(partage: MutableState<Echange?>) {
     val courant = pile.last()
     val ouvrir: (Ecran) -> Unit = { pile = pile + it }
     val retour: () -> Unit = { if (pile.size > 1) pile = pile.dropLast(1) }
+    val allerA: (Ecran) -> Unit = { e ->
+        pile = listOf(e)
+        scope.launch { tiroir.close() }
+    }
 
-    BackHandler(enabled = pile.size > 1) { retour() }
+    BackHandler(enabled = pile.size > 1 || tiroir.isOpen) {
+        if (tiroir.isOpen) scope.launch { tiroir.close() } else retour()
+    }
 
     val titre = when (courant) {
-        Ecran.Tableau -> "Tableau des tâches"
+        Ecran.Accueil -> "Tableau de bord"
+        Ecran.Tableau -> "Tâches"
         Ecran.Agenda -> "Agenda"
         Ecran.Sujets -> "Suivi des sujets"
         Ecran.Contacts -> "Contacts"
         Ecran.Echanges -> "Appels, e-mails et SMS"
+        Ecran.Journal -> "Journal"
         Ecran.Reglages -> "Réglages"
         is Ecran.SujetDetail -> "Sujet"
         is Ecran.ContactDetail -> "Contact"
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(titre) },
-                actions = {
-                    if (courant != Ecran.Reglages) {
-                        IconButton(onClick = { pile = pile + Ecran.Reglages }) {
-                            Icon(Icons.Default.Settings, "Réglages", tint = MaterialTheme.colorScheme.onPrimary)
+    CompositionLocalProvider(LocalColonnes provides colonnes) {
+        ModalNavigationDrawer(
+            drawerState = tiroir,
+            drawerContent = {
+                ModalDrawerSheet {
+                    Text(
+                        "MoonSuivi",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(start = 28.dp, top = 24.dp, bottom = 16.dp)
+                    )
+                    MENU.forEach { o ->
+                        NavigationDrawerItem(
+                            label = { Text(o.label) },
+                            icon = { Icon(o.icone, null) },
+                            selected = pile.first() == o.ecran,
+                            onClick = { allerA(o.ecran) },
+                            modifier = Modifier.padding(horizontal = 12.dp)
+                        )
+                    }
+                }
+            }
+        ) {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = { Text(titre) },
+                        actions = {
+                            if (courant != Ecran.Reglages) {
+                                IconButton(onClick = { pile = pile + Ecran.Reglages }) {
+                                    Icon(Icons.Default.Settings, "Réglages", tint = MaterialTheme.colorScheme.onPrimary)
+                                }
+                            }
+                        },
+                        navigationIcon = {
+                            if (pile.size > 1) {
+                                IconButton(onClick = retour) { Icon(Icons.Default.ArrowBack, "Retour") }
+                            } else {
+                                IconButton(onClick = { scope.launch { tiroir.open() } }) {
+                                    Icon(Icons.Default.Menu, "Menu")
+                                }
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                            navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    )
+                },
+                bottomBar = {
+                    NavigationBar {
+                        ONGLETS.forEach { o ->
+                            NavigationBarItem(
+                                selected = pile.first() == o.ecran,
+                                onClick = { pile = listOf(o.ecran) },
+                                icon = { Icon(o.icone, null) },
+                                label = { Text(o.label, maxLines = 1) }
+                            )
                         }
                     }
-                },
-                navigationIcon = {
-                    if (pile.size > 1) {
-                        IconButton(onClick = retour) { Icon(Icons.Default.ArrowBack, "Retour") }
+                }
+            ) { padding ->
+                Box(Modifier.padding(padding).fillMaxSize()) {
+                    when (val e = courant) {
+                        Ecran.Accueil -> AccueilScreen(ouvrir)
+                        Ecran.Tableau -> KanbanScreen()
+                        Ecran.Agenda -> AgendaScreen()
+                        Ecran.Sujets -> SujetsScreen(ouvrir)
+                        Ecran.Contacts -> ContactsScreen(ouvrir)
+                        Ecran.Echanges -> EchangesScreen()
+                        Ecran.Journal -> JournalScreen(ouvrir)
+                        Ecran.Reglages -> ReglagesScreen { maj = it }
+                        is Ecran.SujetDetail -> key(e.id) { SujetDetailScreen(e.id, ouvrir) }
+                        is Ecran.ContactDetail -> key(e.id) { ContactDetailScreen(e.id, ouvrir) }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            )
-        },
-        bottomBar = {
-            NavigationBar {
-                ONGLETS.forEach { o ->
-                    NavigationBarItem(
-                        selected = pile.first() == o.ecran,
-                        onClick = { pile = listOf(o.ecran) },
-                        icon = { Icon(o.icone, null) },
-                        label = { Text(o.label) }
-                    )
                 }
             }
         }
-    ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
-            when (val e = courant) {
-                Ecran.Tableau -> KanbanScreen()
-                Ecran.Agenda -> AgendaScreen()
-                Ecran.Sujets -> SujetsScreen(ouvrir)
-                Ecran.Contacts -> ContactsScreen(ouvrir)
-                Ecran.Echanges -> EchangesScreen()
-                Ecran.Reglages -> ReglagesScreen { maj = it }
-                is Ecran.SujetDetail -> key(e.id) { SujetDetailScreen(e.id, ouvrir) }
-                is Ecran.ContactDetail -> key(e.id) { ContactDetailScreen(e.id, ouvrir) }
-            }
-        }
-    }
 
-    maj?.let { MajDialog(it) { maj = null } }
-    partage.value?.let { EchangeDialog(it) { partage.value = null } }
+        maj?.let { MajDialog(it) { maj = null } }
+        partage.value?.let { EchangeDialog(it) { partage.value = null } }
+    }
 }

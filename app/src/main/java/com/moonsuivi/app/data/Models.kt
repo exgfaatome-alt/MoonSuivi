@@ -1,11 +1,41 @@
 package com.moonsuivi.app.data
 
-enum class Colonne(val label: String) {
-    A_FAIRE("À faire"),
-    EN_COURS("En cours"),
-    EN_ATTENTE("En attente"),
-    TERMINE("Terminé")
+/** Colonne du kanban (configurable). « terminee » = les tâches de cette colonne sont considérées comme faites. */
+data class Colonne(
+    val id: Long = 0,
+    val nom: String = "",
+    val ordre: Int = 0,
+    val couleur: Long = 0xFF1976D2,
+    val terminee: Boolean = false,
+    val limite: Int = 0
+)
+
+data class Categorie(
+    val id: Long = 0,
+    val nom: String = "",
+    val couleur: Long = 0xFF1976D2
+)
+
+enum class TypeJournal(val label: String, val icone: String) {
+    NOTE("Note", "✏️"),
+    TACHE("Tâche", "☑️"),
+    SUJET("Sujet", "📁")
 }
+
+data class EntreeJournal(
+    val id: Long = 0,
+    val date: Long = System.currentTimeMillis(),
+    val type: TypeJournal = TypeJournal.NOTE,
+    val texte: String = "",
+    val sujetId: Long? = null,
+    val contactId: Long? = null
+)
+
+/** Couleurs proposées pour les colonnes et les catégories. */
+val PALETTE: List<Long> = listOf(
+    0xFF1976D2, 0xFF00897B, 0xFF2E7D32, 0xFFF57C00,
+    0xFFD32F2F, 0xFF8E24AA, 0xFF5D4037, 0xFF546E7A
+)
 
 enum class StatutSujet(val label: String) {
     OUVERT("Ouvert"),
@@ -29,6 +59,7 @@ data class Sujet(
     val description: String = "",
     val statut: StatutSujet = StatutSujet.OUVERT,
     val priorite: Int = 1,
+    val categorieId: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -46,7 +77,8 @@ data class Tache(
     val id: Long = 0,
     val titre: String = "",
     val description: String = "",
-    val colonne: Colonne = Colonne.A_FAIRE,
+    val colonneId: Long = 0,           // 0 = première colonne
+    val position: Double = 0.0,        // ordre dans la colonne
     val priorite: Int = 1,
     val echeance: Long? = null,
     val sujetId: Long? = null,

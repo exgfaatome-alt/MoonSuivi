@@ -4,14 +4,21 @@ Application de suivi d'activité : **sujets**, **contacts**, **tâches en kanban
 
 ## Fonctions
 
-| Onglet | Ce qu'il fait |
+| Écran | Ce qu'il fait |
 |---|---|
-| **Tableau** | Kanban 4 colonnes (À faire / En cours / En attente / Terminé). Flèches ← → pour déplacer une carte, filtre par sujet, priorité, échéance (en rouge si en retard), lien sujet + contact. |
-| **Agenda** | Calendrier mensuel : points pour les tâches à échéance et les appels du jour. Toucher un jour affiche le détail ; « + » crée une tâche à cette date. |
-| **Sujets** | Liste filtrable par statut (Ouvert, En cours, En attente, Clos) + recherche. La fiche d'un sujet regroupe ses tâches, les contacts liés et un **journal de suivi** (notes datées + appels rattachés). |
-| **Contacts** | Fiches (nom, société, téléphones, e-mail, notes), import des contacts du téléphone, bouton Appeler / Écrire. La fiche affiche les tâches, appels et sujets liés. |
-| **Échanges** | Historique unifié : appels (avec enregistrement audio), e-mails et SMS échangés avec vos contacts. Filtres, synchronisation, bouton ✈ pour écrire un e-mail ou un SMS. |
-| **Réglages ⚙** | Autorisations, messagerie (IMAP/SMTP), enregistrement des appels, mises à jour. |
+| **Tableau de bord** | Écran d'accueil : tâches ouvertes / en retard / du jour, sujets actifs, avancement du kanban, sujets par catégorie, échanges des 7 derniers jours, activité récente. |
+| **Tâches** | Kanban à **colonnes configurables** (nom, couleur, ordre, limite de cartes, colonne « terminé » ✓). **Glisser-déposer** : appui long sur une carte puis glissez-la (défilement automatique près des bords). |
+| **Agenda** | Calendrier mensuel des échéances et des appels. |
+| **Sujets** | Sujets classés par **catégorie** (couleurs, filtre) et statut. Fiche : tâches, contacts liés, journal de suivi, boutons Appeler / SMS / E-mail. |
+| **Contacts** | Fiches, import du téléphone, historique des échanges. |
+| **Échanges** | Appels, e-mails et SMS, filtrables. |
+| **Journal** | Fil chronologique de toute l'activité, jour par jour : notes libres (✏), tâches créées / déplacées / terminées, changements de statut des sujets, appels, e-mails, SMS. Recherche et filtres. |
+| **Réglages ⚙** | Fonctionnement permanent, colonnes, catégories, autorisations, messagerie, enregistrement des appels, mises à jour. |
+
+Le menu ☰ (en haut à gauche) donne accès à tous les écrans.
+
+### Rester actif
+MoonSuivi tourne en permanence en arrière-plan (notification discrète « MoonSuivi est actif ») et redémarre seul après un redémarrage du téléphone. Dans Réglages, désactivez l'optimisation de batterie pour MoonSuivi ; sur Xiaomi / Huawei / Oppo / Samsung, autorisez aussi le démarrage automatique.
 
 ### Communiquer depuis l'appli
 - **Téléphoner** : appel direct depuis une fiche contact, un sujet ou un échange.
@@ -69,6 +76,7 @@ app/src/main/java/com/moonsuivi/app/
 │   └── ContactsImport.kt      import des contacts du téléphone
 ├── mail/                      Courrier.kt (IMAP/SMTP), MailWorker.kt (relève automatique)
 ├── messages/                  Sms.kt, SmsReceiver.kt
+├── service/                   ServiceActif.kt (fonctionnement permanent, redémarrage)
 ├── update/                    MiseAJour.kt (vérification, téléchargement, installation)
 ├── calls/
 │   ├── CallReceiver.kt        détection début / fin d'appel + journalisation
@@ -77,7 +85,7 @@ app/src/main/java/com/moonsuivi/app/
 │   ├── Recorder.kt            MediaRecorder (.m4a)
 │   ├── CallLogger.kt          copie du journal Android + rattachement audio
 │   └── Lecteur.kt             lecture des enregistrements
-└── ui/                        écrans Jetpack Compose (Kanban, Agenda, Sujets, Contacts, Échanges, Réglages)
+└── ui/                        écrans Jetpack Compose (Tableau de bord, Kanban, Agenda, Sujets, Contacts, Échanges, Journal, Réglages)
 ```
 
 Technos : Kotlin 1.9, Jetpack Compose (Material 3), SQLite, minSdk / targetSdk 30 (Android 11).

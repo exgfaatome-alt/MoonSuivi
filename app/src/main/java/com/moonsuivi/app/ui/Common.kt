@@ -9,6 +9,9 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -35,6 +38,8 @@ import java.util.Locale
 
 // ---------- Navigation ----------
 sealed class Ecran {
+    object Accueil : Ecran()
+    object Journal : Ecran()
     object Tableau : Ecran()
     object Agenda : Ecran()
     object Sujets : Ecran()
@@ -44,6 +49,11 @@ sealed class Ecran {
     data class SujetDetail(val id: Long) : Ecran()
     data class ContactDetail(val id: Long) : Ecran()
 }
+
+/** Colonnes du kanban, fournies à tous les écrans. */
+val LocalColonnes = compositionLocalOf<List<com.moonsuivi.app.data.Colonne>> { emptyList() }
+
+const val UN_JOUR: Long = 24L * 3600 * 1000
 
 // ---------- Données réactives ----------
 /** Relit les données à chaque modification de la base. */
@@ -268,5 +278,35 @@ fun EtatLigne(ok: Boolean, texte: String, action: String, onAction: () -> Unit) 
         Spacer(Modifier.width(8.dp))
         Text(texte, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         if (!ok) TextButton(onClick = onAction) { Text(action) }
+    }
+}
+
+/** Petite ligne d'aide grise. */
+@Composable
+fun Indication(texte: String) {
+    Text(texte, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** Choix d'une couleur dans la palette. */
+@Composable
+fun SelecteurCouleur(couleur: Long, onChange: (Long) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        com.moonsuivi.app.data.PALETTE.forEach { c ->
+            Box(
+                Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(Color(c))
+                    .border(
+                        width = if (c == couleur) 3.dp else 0.dp,
+                        color = if (c == couleur) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                        shape = CircleShape
+                    )
+                    .clickable { onChange(c) },
+                contentAlignment = Alignment.Center
+            ) {
+                if (c == couleur) Text("✓", color = Color.White)
+            }
+        }
     }
 }

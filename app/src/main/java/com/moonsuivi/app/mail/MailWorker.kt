@@ -17,8 +17,10 @@ import java.util.concurrent.TimeUnit
 class MailWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        // Filet de sécurité : relance le service permanent s'il a été arrêté
+        com.moonsuivi.app.service.ServiceActif.demarrer(applicationContext)
         try {
-            Courrier.synchroniser(applicationContext)
+            if (Prefs.mail(applicationContext).auto) Courrier.synchroniser(applicationContext)
         } catch (e: Exception) {
             // l'erreur est mémorisée dans les réglages et affichée à l'utilisateur
         }
@@ -31,7 +33,7 @@ class MailWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         fun planifier(ctx: Context) {
             val wm = WorkManager.getInstance(ctx)
             val c = Prefs.mail(ctx)
-            if (c.configuree && c.auto) {
+            if ((c.configuree && c.auto) || Prefs.resterActif(ctx)) {
                 val req = PeriodicWorkRequestBuilder<MailWorker>(30, TimeUnit.MINUTES)
                     .setConstraints(
                         Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()

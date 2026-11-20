@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import java.io.File
 
-private class Db(ctx: Context) : SQLiteOpenHelper(ctx, "moonsuivi.db", null, 2) {
+private class Db(ctx: Context) : SQLiteOpenHelper(ctx, "moonsuivi.db", null, 3) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             "CREATE TABLE sujets(id INTEGER PRIMARY KEY AUTOINCREMENT, titre TEXT NOT NULL, " +
@@ -40,7 +40,49 @@ private class Db(ctx: Context) : SQLiteOpenHelper(ctx, "moonsuivi.db", null, 2) 
         db.execSQL("CREATE INDEX idx_taches_echeance ON taches(echeance)")
         db.execSQL("CREATE INDEX idx_appels_date ON appels(date)")
         db.execSQL("CREATE INDEX idx_notes_sujet ON notes(sujet_id)")
-        creerEchanges(db)
+        migrer(db, 1)
+    }
+
+    private fun migrer(db: SQLiteDatabase, depuis: Int) {
+        if (depuis < 2) creerEchanges(db)
+        if (depuis < 3) versionTrois(db)
+    }
+
+    /** v3 : colonnes configurables, ordre manuel des tâches, catégories, journal. */
+    private fun versionTrois(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS colonnes(id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT NOT NULL, " +
+                "ordre INTEGER NOT NULL, couleur INTEGER NOT NULL, terminee INTEGER NOT NULL DEFAULT 0, " +
+                "limite INTEGER NOT NULL DEFAULT 0)"
+        )
+        db.execSQL(
+            "INSERT INTO colonnes(id, nom, ordre, couleur, terminee) VALUES " +
+                "(1, 'À faire', 0, ${0xFF1976D2}, 0), (2, 'En cours', 1, ${0xFFF57C00}, 0), " +
+                "(3, 'En attente', 2, ${0xFF8E24AA}, 0), (4, 'Terminé', 3, ${0xFF2E7D32}, 1)"
+        )
+        db.execSQL("ALTER TABLE taches ADD COLUMN colonne_id INTEGER")
+        db.execSQL("ALTER TABLE taches ADD COLUMN position REAL NOT NULL DEFAULT 0")
+        db.execSQL(
+            "UPDATE taches SET colonne_id = CASE colonne WHEN 'EN_COURS' THEN 2 WHEN 'EN_ATTENTE' THEN 3 " +
+                "WHEN 'TERMINE' THEN 4 ELSE 1 END, position = id"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_taches_colonne ON taches(colonne_id)")
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS categories(id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT NOT NULL, " +
+                "couleur INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "INSERT INTO categories(nom, couleur) VALUES ('Client', ${0xFF1976D2}), " +
+                "('Projet', ${0xFF00897B}), ('Administratif', ${0xFF546E7A})"
+        )
+        db.execSQL("ALTER TABLE sujets ADD COLUMN categorie_id INTEGER")
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS journal(id INTEGER PRIMARY KEY AUTOINCREMENT, date INTEGER NOT NULL, " +
+                "type TEXT NOT NULL, texte TEXT NOT NULL, sujet_id INTEGER, contact_id INTEGER)"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_journal_date ON journal(date)")
     }
 
     private fun creerEchanges(db: SQLiteDatabase) {
@@ -55,7 +97,7 @@ private class Db(ctx: Context) : SQLiteOpenHelper(ctx, "moonsuivi.db", null, 2) 
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion < 2) creerEchanges(db)
+        migrer(db, oldVersion)
     }
 }
 
@@ -130,6 +172,7 @@ object Repo {
         description = c.str("description"),
         statut = runCatching { StatutSujet.valueOf(c.str("statut")) }.getOrDefault(StatutSujet.OUVERT),
         priorite = c.lng("priorite").toInt(),
+        categorieId = c.lngN("categorie_id"),
         createdAt = c.lng("created_at"),
         updatedAt = c.lng("updated_at")
     )
@@ -143,11 +186,13 @@ object Repo {
         list("SELECT * FROM sujets WHERE id=?", arrayOf(id.toString()), ::sujetOf).firstOrNull()
 
     fun saveSujet(s: Sujet): Long {
+        val avant = if (s.id == 0L) null else sujet(s.id)
         val cv = ContentValues().apply {
             put("titre", s.titre)
             put("description", s.description)
             put("statut", s.statut.name)
             put("priorite", s.priorite)
+            putN("categorie_id", s.categorieId)
             put("updated_at", now())
         }
         val id = if (s.id == 0L) {
@@ -156,6 +201,11 @@ object Repo {
         } else {
             w.update("sujets", cv, "id=?", arrayOf(s.id.toString()))
             s.id
+        }
+        if (avant == null) {
+            journaliser(TypeJournal.SUJET, "Nouveau sujet : ${s.titre}", sujetId = id)
+        } else if (avant.statut != s.statut) {
+            journaliser(TypeJournal.SUJET, "« ${s.titre} » : ${avant.statut.label} → ${s.statut.label}", sujetId = id)
         }
         notifyChanged()
         return id
@@ -173,11 +223,12 @@ object Repo {
         w.execSQL("UPDATE taches SET sujet_id=NULL WHERE sujet_id=?", arrayOf<Any>(id))
         w.execSQL("UPDATE appels SET sujet_id=NULL WHERE sujet_id=?", arrayOf<Any>(id))
         w.execSQL("UPDATE echanges SET sujet_id=NULL WHERE sujet_id=?", arrayOf<Any>(id))
+        w.execSQL("UPDATE journal SET sujet_id=NULL WHERE sujet_id=?", arrayOf<Any>(id))
         notifyChanged()
     }
 
     fun tachesOuvertesParSujet(): Map<Long, Int> = list(
-        "SELECT sujet_id, COUNT(*) AS n FROM taches WHERE colonne != 'TERMINE' AND sujet_id IS NOT NULL GROUP BY sujet_id",
+        "SELECT sujet_id, COUNT(*) AS n FROM taches WHERE $OUVERTE AND sujet_id IS NOT NULL GROUP BY sujet_id",
         null
     ) { c -> c.lng("sujet_id") to c.lng("n").toInt() }.toMap()
 
@@ -217,6 +268,7 @@ object Repo {
         w.execSQL("UPDATE taches SET contact_id=NULL WHERE contact_id=?", arrayOf<Any>(id))
         w.execSQL("UPDATE appels SET contact_id=NULL WHERE contact_id=?", arrayOf<Any>(id))
         w.execSQL("UPDATE echanges SET contact_id=NULL WHERE contact_id=?", arrayOf<Any>(id))
+        w.execSQL("UPDATE journal SET contact_id=NULL WHERE contact_id=?", arrayOf<Any>(id))
         notifyChanged()
     }
 
@@ -233,7 +285,8 @@ object Repo {
         id = c.lng("id"),
         titre = c.str("titre"),
         description = c.str("description"),
-        colonne = runCatching { Colonne.valueOf(c.str("colonne")) }.getOrDefault(Colonne.A_FAIRE),
+        colonneId = c.lngN("colonne_id") ?: 0L,
+        position = c.getDouble(c.getColumnIndexOrThrow("position")),
         priorite = c.lng("priorite").toInt(),
         echeance = c.lngN("echeance"),
         sujetId = c.lngN("sujet_id"),
@@ -243,28 +296,44 @@ object Repo {
 
     private const val ORDRE_TACHES =
         " ORDER BY priorite DESC, CASE WHEN echeance IS NULL THEN 1 ELSE 0 END, echeance, created_at"
+    private const val OUVERTE = "IFNULL(colonne_id, 0) NOT IN (SELECT id FROM colonnes WHERE terminee = 1)"
+    private const val ORDRE_FAITES_EN_DERNIER =
+        " ORDER BY CASE WHEN $OUVERTE THEN 0 ELSE 1 END, priorite DESC, echeance"
 
-    fun taches(): List<Tache> = list("SELECT * FROM taches$ORDRE_TACHES", null, ::tacheOf)
+    /** Toutes les tâches, dans l'ordre manuel du kanban. */
+    fun taches(): List<Tache> = list("SELECT * FROM taches ORDER BY position, created_at", null, ::tacheOf)
+
+    fun tachesOuvertes(): List<Tache> = list("SELECT * FROM taches WHERE $OUVERTE$ORDRE_TACHES", null, ::tacheOf)
 
     fun tachesSujet(id: Long): List<Tache> =
         list("SELECT * FROM taches WHERE sujet_id=?" +
-            " ORDER BY CASE colonne WHEN 'TERMINE' THEN 1 ELSE 0 END, priorite DESC, echeance",
+            ORDRE_FAITES_EN_DERNIER,
             arrayOf(id.toString()), ::tacheOf)
 
     fun tachesContact(id: Long): List<Tache> =
         list("SELECT * FROM taches WHERE contact_id=?" +
-            " ORDER BY CASE colonne WHEN 'TERMINE' THEN 1 ELSE 0 END, priorite DESC, echeance",
+            ORDRE_FAITES_EN_DERNIER,
             arrayOf(id.toString()), ::tacheOf)
 
     fun tachesEntre(debut: Long, fin: Long): List<Tache> =
         list("SELECT * FROM taches WHERE echeance >= ? AND echeance < ?$ORDRE_TACHES",
             arrayOf(debut.toString(), fin.toString()), ::tacheOf)
 
+    fun tache(id: Long): Tache? =
+        list("SELECT * FROM taches WHERE id=?", arrayOf(id.toString()), ::tacheOf).firstOrNull()
+
+    private fun positionFin(colonneId: Long): Double =
+        r.rawQuery("SELECT IFNULL(MAX(position), 0) FROM taches WHERE colonne_id=?", arrayOf(colonneId.toString()))
+            .use { c -> if (c.moveToFirst()) c.getDouble(0) + 1 else 1.0 }
+
     fun saveTache(t: Tache): Long {
+        val avant = if (t.id == 0L) null else tache(t.id)
+        val colonne = if (t.colonneId == 0L) premiereColonneId() else t.colonneId
         val cv = ContentValues().apply {
             put("titre", t.titre)
             put("description", t.description)
-            put("colonne", t.colonne.name)
+            put("colonne", "")
+            put("colonne_id", colonne)
             put("priorite", t.priorite)
             putN("echeance", t.echeance)
             putN("sujet_id", t.sujetId)
@@ -272,18 +341,56 @@ object Repo {
         }
         val id = if (t.id == 0L) {
             cv.put("created_at", t.createdAt)
+            cv.put("position", positionFin(colonne))
             w.insert("taches", null, cv)
         } else {
+            if (avant != null && avant.colonneId != colonne) cv.put("position", positionFin(colonne))
             w.update("taches", cv, "id=?", arrayOf(t.id.toString())); t.id
+        }
+        if (avant == null) {
+            journaliser(TypeJournal.TACHE, "Nouvelle tâche : ${t.titre}", t.sujetId, t.contactId)
+        } else if (avant.colonneId != colonne) {
+            journaliserDeplacement(t.titre, avant.colonneId, colonne, t.sujetId, t.contactId)
         }
         toucherSujet(t.sujetId)
         notifyChanged()
         return id
     }
 
-    fun moveTache(id: Long, colonne: Colonne) {
-        w.execSQL("UPDATE taches SET colonne=? WHERE id=?", arrayOf<Any>(colonne.name, id))
+    /** Déplace une tâche dans une colonne, à la place [index] (glisser-déposer). */
+    fun deplacerTache(id: Long, colonneId: Long, index: Int) {
+        val t = tache(id) ?: return
+        val autres = list(
+            "SELECT * FROM taches WHERE colonne_id=? AND id != ? ORDER BY position, created_at",
+            arrayOf(colonneId.toString(), id.toString()), ::tacheOf
+        ).map { it.id }.toMutableList()
+        autres.add(index.coerceIn(0, autres.size), id)
+        val db = w
+        db.beginTransaction()
+        try {
+            autres.forEachIndexed { i, tid ->
+                db.execSQL("UPDATE taches SET position=?, colonne_id=? WHERE id=?", arrayOf<Any>(i.toDouble(), colonneId, tid))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        if (t.colonneId != colonneId) {
+            journaliserDeplacement(t.titre, t.colonneId, colonneId, t.sujetId, t.contactId)
+            toucherSujet(t.sujetId)
+        }
         notifyChanged()
+    }
+
+    /** Déplace une tâche à la fin d'une colonne. */
+    fun moveTache(id: Long, colonneId: Long) = deplacerTache(id, colonneId, Int.MAX_VALUE)
+
+    private fun journaliserDeplacement(titre: String, de: Long, vers: Long, sujetId: Long?, contactId: Long?) {
+        val cols = colonnes().associateBy { it.id }
+        val cible = cols[vers] ?: return
+        val texte = if (cible.terminee) "Tâche terminée : $titre"
+        else "« $titre » : ${cols[de]?.nom ?: "?"} → ${cible.nom}"
+        journaliser(TypeJournal.TACHE, texte, sujetId, contactId)
     }
 
     fun deleteTache(id: Long) {
@@ -434,4 +541,144 @@ object Repo {
         w.delete("echanges", "id=?", arrayOf(id.toString()))
         notifyChanged()
     }
+
+    // ---------- Colonnes du kanban ----------
+    private fun colonneOf(c: Cursor) = Colonne(
+        id = c.lng("id"),
+        nom = c.str("nom"),
+        ordre = c.lng("ordre").toInt(),
+        couleur = c.lng("couleur"),
+        terminee = c.lng("terminee") != 0L,
+        limite = c.lng("limite").toInt()
+    )
+
+    fun colonnes(): List<Colonne> = list("SELECT * FROM colonnes ORDER BY ordre, id", null, ::colonneOf)
+
+    fun premiereColonneId(): Long = colonnes().firstOrNull()?.id ?: run {
+        saveColonne(Colonne(nom = "À faire"))
+    }
+
+    fun saveColonne(c: Colonne): Long {
+        val cv = ContentValues().apply {
+            put("nom", c.nom)
+            put("couleur", c.couleur)
+            put("terminee", if (c.terminee) 1 else 0)
+            put("limite", c.limite)
+        }
+        val id = if (c.id == 0L) {
+            val ordre = r.rawQuery("SELECT IFNULL(MAX(ordre), -1) + 1 FROM colonnes", null)
+                .use { k -> if (k.moveToFirst()) k.getInt(0) else 0 }
+            cv.put("ordre", ordre)
+            w.insert("colonnes", null, cv)
+        } else {
+            w.update("colonnes", cv, "id=?", arrayOf(c.id.toString())); c.id
+        }
+        notifyChanged()
+        return id
+    }
+
+    /** Enregistre le nouvel ordre des colonnes. */
+    fun ordonnerColonnes(ids: List<Long>) {
+        val db = w
+        db.beginTransaction()
+        try {
+            ids.forEachIndexed { i, id -> db.execSQL("UPDATE colonnes SET ordre=? WHERE id=?", arrayOf<Any>(i, id)) }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        notifyChanged()
+    }
+
+    /** Supprime une colonne ; ses tâches sont déplacées dans [versId]. */
+    fun deleteColonne(id: Long, versId: Long) {
+        if (id == versId) return
+        val fin = positionFin(versId)
+        w.execSQL("UPDATE taches SET colonne_id=?, position=position+? WHERE colonne_id=?", arrayOf<Any>(versId, fin, id))
+        w.delete("colonnes", "id=?", arrayOf(id.toString()))
+        notifyChanged()
+    }
+
+    // ---------- Catégories de sujets ----------
+    private fun categorieOf(c: Cursor) = Categorie(c.lng("id"), c.str("nom"), c.lng("couleur"))
+
+    fun categories(): List<Categorie> =
+        list("SELECT * FROM categories ORDER BY nom COLLATE NOCASE", null, ::categorieOf)
+
+    fun saveCategorie(c: Categorie): Long {
+        val cv = ContentValues().apply {
+            put("nom", c.nom)
+            put("couleur", c.couleur)
+        }
+        val id = if (c.id == 0L) w.insert("categories", null, cv) else {
+            w.update("categories", cv, "id=?", arrayOf(c.id.toString())); c.id
+        }
+        notifyChanged()
+        return id
+    }
+
+    fun deleteCategorie(id: Long) {
+        w.delete("categories", "id=?", arrayOf(id.toString()))
+        w.execSQL("UPDATE sujets SET categorie_id=NULL WHERE categorie_id=?", arrayOf<Any>(id))
+        notifyChanged()
+    }
+
+    // ---------- Journal ----------
+    private fun journalOf(c: Cursor) = EntreeJournal(
+        id = c.lng("id"),
+        date = c.lng("date"),
+        type = runCatching { TypeJournal.valueOf(c.str("type")) }.getOrDefault(TypeJournal.NOTE),
+        texte = c.str("texte"),
+        sujetId = c.lngN("sujet_id"),
+        contactId = c.lngN("contact_id")
+    )
+
+    fun journal(depuis: Long): List<EntreeJournal> =
+        list("SELECT * FROM journal WHERE date >= ? ORDER BY date DESC", arrayOf(depuis.toString()), ::journalOf)
+
+    fun journalRecent(n: Int): List<EntreeJournal> =
+        list("SELECT * FROM journal ORDER BY date DESC LIMIT $n", null, ::journalOf)
+
+    private fun journaliser(type: TypeJournal, texte: String, sujetId: Long? = null, contactId: Long? = null) {
+        val cv = ContentValues().apply {
+            put("date", now())
+            put("type", type.name)
+            put("texte", texte)
+            putN("sujet_id", sujetId)
+            putN("contact_id", contactId)
+        }
+        w.insert("journal", null, cv)
+    }
+
+    fun saveJournal(e: EntreeJournal): Long {
+        val cv = ContentValues().apply {
+            put("date", e.date)
+            put("type", e.type.name)
+            put("texte", e.texte)
+            putN("sujet_id", e.sujetId)
+            putN("contact_id", e.contactId)
+        }
+        val id = if (e.id == 0L) w.insert("journal", null, cv) else {
+            w.update("journal", cv, "id=?", arrayOf(e.id.toString())); e.id
+        }
+        notifyChanged()
+        return id
+    }
+
+    fun deleteJournal(id: Long) {
+        w.delete("journal", "id=?", arrayOf(id.toString()))
+        notifyChanged()
+    }
+
+    // ---------- Pour le journal et le tableau de bord ----------
+    fun notesDepuis(depuis: Long): List<NoteSujet> =
+        list("SELECT * FROM notes WHERE date >= ? ORDER BY date DESC", arrayOf(depuis.toString())) { c ->
+            NoteSujet(c.lng("id"), c.lng("sujet_id"), c.str("texte"), c.lng("date"))
+        }
+
+    fun appelsDepuis(depuis: Long): List<Appel> =
+        list("SELECT * FROM appels WHERE date >= ? ORDER BY date DESC", arrayOf(depuis.toString()), ::appelOf)
+
+    fun echangesDepuis(depuis: Long): List<Echange> =
+        list("SELECT * FROM echanges WHERE date >= ? ORDER BY date DESC", arrayOf(depuis.toString()), ::echangeOf)
 }
