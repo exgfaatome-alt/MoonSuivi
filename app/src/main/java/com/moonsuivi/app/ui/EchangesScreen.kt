@@ -124,6 +124,9 @@ fun EchangesScreen() {
                     Text(if (synchro) "Synchronisation…" else "Synchroniser")
                 }
             }
+            Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                Astuce("echanges", "Les appels et les SMS de vos contacts arrivent ici tout seuls. Pour les e-mails, configurez votre messagerie dans Réglages ⚙. Touchez un échange pour le ranger dans un sujet.")
+            }
             if (synchro) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp))
             message?.let {
                 Text(
@@ -146,10 +149,14 @@ fun EchangesScreen() {
                 }
             }
         }
-        FloatingActionButton(
+        ExtendedFloatingActionButton(
             onClick = { nouveau = true },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
-        ) { Icon(Icons.Default.Send, "Nouveau message") }
+        ) {
+            Icon(Icons.Default.Send, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Message")
+        }
     }
 
     editAppel?.let { AppelDialog(it) { editAppel = null } }

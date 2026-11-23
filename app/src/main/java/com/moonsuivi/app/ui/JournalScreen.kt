@@ -113,6 +113,9 @@ fun JournalScreen(ouvrir: (Ecran) -> Unit) {
                 )
                 ChoiceField("Période", PERIODES, jours, { jours = it }, Modifier.width(130.dp))
             }
+            Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                Astuce("journal", "Le journal note automatiquement vos tâches, sujets et échanges. Touchez ✏ Écrire pour ajouter un compte rendu ou une décision.")
+            }
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -160,10 +163,14 @@ fun JournalScreen(ouvrir: (Ecran) -> Unit) {
                 }
             }
         }
-        FloatingActionButton(
+        ExtendedFloatingActionButton(
             onClick = { ecrire = EntreeJournal() },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
-        ) { Icon(Icons.Default.Edit, "Écrire dans le journal") }
+        ) {
+            Icon(Icons.Default.Edit, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Écrire")
+        }
     }
 
     ecrire?.let { JournalDialog(it) { ecrire = null } }

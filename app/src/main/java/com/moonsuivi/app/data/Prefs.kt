@@ -53,6 +53,27 @@ object Prefs {
     fun mailErreur(ctx: Context): String? = p(ctx).getString("mail_erreur", null)
     fun setMailErreur(ctx: Context, v: String?) = p(ctx).edit().putString("mail_erreur", v).apply()
 
+    // ---------- Appel lancé depuis un sujet / une tâche ----------
+    fun setAppelEnAttente(ctx: Context, numero: String, sujetId: Long) = p(ctx).edit()
+        .putString("appel_num", numero).putLong("appel_sujet", sujetId)
+        .putLong("appel_date", System.currentTimeMillis()).apply()
+    fun appelEnAttente(ctx: Context): Triple<String, Long, Long>? {
+        val x = p(ctx)
+        val n = x.getString("appel_num", null) ?: return null
+        return Triple(n, x.getLong("appel_sujet", 0L), x.getLong("appel_date", 0L))
+    }
+    fun effacerAppelEnAttente(ctx: Context) = p(ctx).edit().remove("appel_num").apply()
+
+    // ---------- Astuces ----------
+    fun astuceVue(ctx: Context, cle: String): Boolean = p(ctx).getBoolean("astuce_$cle", false)
+    fun setAstuceVue(ctx: Context, cle: String) = p(ctx).edit().putBoolean("astuce_$cle", true).apply()
+    fun reafficherAstuces(ctx: Context) {
+        val x = p(ctx)
+        val e = x.edit()
+        x.all.keys.filter { it.startsWith("astuce_") }.forEach { e.remove(it) }
+        e.apply()
+    }
+
     // ---------- Fonctionnement permanent ----------
     fun resterActif(ctx: Context): Boolean = p(ctx).getBoolean("rester_actif", true)
     fun setResterActif(ctx: Context, v: Boolean) = p(ctx).edit().putBoolean("rester_actif", v).apply()

@@ -5,7 +5,10 @@ import android.text.Html
 import com.moonsuivi.app.data.Canal
 import com.moonsuivi.app.data.ConfigMail
 import com.moonsuivi.app.data.Contact
+import com.moonsuivi.app.data.Document
 import com.moonsuivi.app.data.Echange
+import com.moonsuivi.app.data.Fichiers
+import com.moonsuivi.app.data.TypeDocument
 import com.moonsuivi.app.data.Prefs
 import com.moonsuivi.app.data.Repo
 import com.moonsuivi.app.data.emailsDe
@@ -23,7 +26,10 @@ import javax.mail.Session
 import javax.mail.Store
 import javax.mail.Transport
 import javax.mail.internet.InternetAddress
+import javax.mail.internet.MimeBodyPart
 import javax.mail.internet.MimeMessage
+import javax.mail.internet.MimeMultipart
+import javax.mail.internet.MimeUtility
 import javax.mail.search.ComparisonTerm
 import javax.mail.search.ReceivedDateTerm
 import javax.mail.search.SentDateTerm
@@ -74,13 +80,28 @@ object Courrier {
     }
 
     /** Envoie un e-mail et renvoie son Message-ID (pour éviter le doublon à la synchronisation). */
-    fun envoyer(c: ConfigMail, destinataire: String, objet: String, texte: String): String {
+    fun envoyer(
+        c: ConfigMail,
+        destinataire: String,
+        objet: String,
+        texte: String,
+        pieces: List<java.io.File> = emptyList()
+    ): String {
         val s = session(c)
         val m = MimeMessage(s)
         m.setFrom(InternetAddress(c.utilisateur))
         m.setRecipients(Message.RecipientType.TO, InternetAddress.parse(destinataire))
         m.setSubject(objet, "UTF-8")
-        m.setText(texte, "UTF-8")
+        if (pieces.isEmpty()) {
+            m.setText(texte, "UTF-8")
+        } else {
+            val mp = MimeMultipart()
+            mp.addBodyPart(MimeBodyPart().apply { setText(texte, "UTF-8") })
+            pieces.filter { it.exists() }.forEach { f ->
+                mp.addBodyPart(MimeBodyPart().apply { attachFile(f) })
+            }
+            m.setContent(mp)
+        }
         m.sentDate = Date()
         m.saveChanges()
         val mid = m.messageID ?: "moon-${System.currentTimeMillis()}"
@@ -122,8 +143,8 @@ object Courrier {
         try {
             val store = connecter(session(c), c)
             try {
-                n += lireDossier(store.getFolder("INBOX"), true, depuis, contacts)
-                dossierEnvoyes(store)?.let { n += lireDossier(it, false, depuis, contacts) }
+                n += lireDossier(ctx, store.getFolder("INBOX"), true, depuis, contacts)
+                dossierEnvoyes(store)?.let { n += lireDossier(ctx, it, false, depuis, contacts) }
             } finally {
                 runCatching { store.close() }
             }
@@ -157,7 +178,7 @@ object Courrier {
     private fun contactPour(adresse: String, contacts: List<Contact>): Contact? =
         contacts.firstOrNull { c -> emailsDe(c).any { it.equals(adresse, ignoreCase = true) } }
 
-    private fun lireDossier(f: Folder, recu: Boolean, depuis: Long, contacts: List<Contact>): Int {
+    private fun lireDossier(ctx: Context, f: Folder, recu: Boolean, depuis: Long, contacts: List<Contact>): Int {
         f.open(Folder.READ_ONLY)
         try {
             val terme = if (recu) ReceivedDateTerm(ComparisonTerm.GE, Date(depuis))
@@ -189,7 +210,7 @@ object Courrier {
                     val mid = (m as? MimeMessage)?.messageID ?: "${contact.id}-$dateMsg-$objet"
                     if (Repo.echangeExiste(mid)) continue
 
-                    Repo.saveEchange(
+                    val idEchange = Repo.saveEchange(
                         Echange(
                             canal = if (recu) Canal.EMAIL_RECU else Canal.EMAIL_ENVOYE,
                             contactId = contact.id,
@@ -202,6 +223,7 @@ object Courrier {
                         ),
                         notifier = false
                     )
+                    if (idEchange > 0) enregistrerPiecesJointes(ctx, m, idEchange)
                     n++
                 } catch (e: Exception) {
                     // message illisible : on passe au suivant
@@ -210,6 +232,43 @@ object Courrier {
             return n
         } finally {
             runCatching { f.close(false) }
+        }
+    }
+
+    /** Copie les pièces jointes d'un e-mail dans l'appli (elles apparaissent dans le dossier du sujet). */
+    private fun enregistrerPiecesJointes(ctx: Context, p: Part, echangeId: Long) {
+        try {
+            if (p.isMimeType("multipart/*")) {
+                val mp = p.content as Multipart
+                for (i in 0 until mp.count) enregistrerPiecesJointes(ctx, mp.getBodyPart(i), echangeId)
+                return
+            }
+            val nomBrut = p.fileName ?: return
+            val enLigne = Part.INLINE.equals(p.disposition, ignoreCase = true)
+            if (p.size > Fichiers.TAILLE_MAX_PJ) return
+            val nom = runCatching { MimeUtility.decodeText(nomBrut) }.getOrDefault(nomBrut)
+            val f = Fichiers.nomUnique(Fichiers.dossierPiecesJointes(ctx, echangeId), nom)
+            p.inputStream.use { e -> f.outputStream().use { s -> e.copyTo(s) } }
+            // Ignore les petites images de signature intégrées au texte
+            if (f.length() > Fichiers.TAILLE_MAX_PJ || (enLigne && f.length() < 20_000)) {
+                f.delete()
+                return
+            }
+            val type = p.contentType?.substringBefore(';')?.trim()?.lowercase()
+            val mime = if (type.isNullOrBlank() || type == "application/octet-stream") Fichiers.mimeDe(f.name) else type
+            Repo.saveDocument(
+                Document(
+                    echangeId = echangeId,
+                    type = TypeDocument.PIECE_JOINTE,
+                    nom = f.name,
+                    chemin = f.absolutePath,
+                    mime = mime,
+                    taille = f.length()
+                ),
+                notifier = false
+            )
+        } catch (e: Exception) {
+            // pièce jointe illisible : ignorée
         }
     }
 

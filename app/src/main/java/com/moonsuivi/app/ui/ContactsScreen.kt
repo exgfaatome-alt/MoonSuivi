@@ -57,6 +57,9 @@ fun ContactsScreen(ouvrir: (Ecran) -> Unit) {
                     }
                 }) { Text("Importer") }
             }
+            Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                Astuce("contacts", "« Importer » récupère les contacts du téléphone. Renseignez l'adresse e-mail d'un contact pour suivre ses e-mails automatiquement.")
+            }
             message?.let {
                 Text(
                     it,
@@ -80,10 +83,14 @@ fun ContactsScreen(ouvrir: (Ecran) -> Unit) {
                 }
             }
         }
-        FloatingActionButton(
+        ExtendedFloatingActionButton(
             onClick = { nouveau = true },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
-        ) { Icon(Icons.Default.Add, "Nouveau contact") }
+        ) {
+            Icon(Icons.Default.Add, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Contact")
+        }
     }
 
     if (nouveau) ContactDialog(Contact()) { nouveau = false }
@@ -118,7 +125,7 @@ private fun ContactCarte(c: Contact, onClick: () -> Unit) {
                 }
             }
             if (c.telephone.isNotBlank()) {
-                IconButton(onClick = { appeler(ctx, c.telephone) }) { Icon(Icons.Default.Phone, "Appeler") }
+                BoutonIcone(Icons.Default.Phone, "Appeler", onClick = { appeler(ctx, c.telephone) })
             }
         }
     }
@@ -163,7 +170,7 @@ fun ContactDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
                             Text(contact.nom, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             if (contact.societe.isNotBlank()) Text(contact.societe)
                         }
-                        IconButton(onClick = { edit = true }) { Icon(Icons.Default.Edit, "Modifier") }
+                        BoutonIcone(Icons.Default.Edit, "Modifier le contact", onClick = { edit = true })
                     }
                     contact.telephone.split('/', ',', ';').map { it.trim() }.filter { it.isNotBlank() }.forEach { num ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -208,7 +215,7 @@ fun ContactDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
 
         item {
             SectionTitre("Tâches (${taches.size})") {
-                IconButton(onClick = { editTache = Tache(contactId = id) }) { Icon(Icons.Default.Add, "Ajouter une tâche") }
+                BoutonIcone(Icons.Default.Add, "Ajouter une tâche", onClick = { editTache = Tache(contactId = id) })
             }
         }
         if (taches.isEmpty()) item { Vide("Aucune tâche avec ce contact.") }

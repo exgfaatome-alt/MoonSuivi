@@ -52,6 +52,13 @@ fun AccueilScreen(ouvrir: (Ecran) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
+            Astuce(
+                "accueil",
+                "Bienvenue ! Touchez ⓘ en haut de chaque écran pour son aide, et faites un appui long sur une icône " +
+                    "pour savoir à quoi elle sert. Le guide complet est dans le menu ☰ › Aide et guide."
+            )
+        }
+        item {
             Column {
                 Text(
                     SimpleDateFormat("EEEE d MMMM", Locale.FRANCE).format(Date()).replaceFirstChar { it.uppercase() },

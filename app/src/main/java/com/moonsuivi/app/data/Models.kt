@@ -126,3 +126,26 @@ data class Echange(
     val date: Long = System.currentTimeMillis(),
     val messageId: String? = null
 )
+
+/** Pièces du dossier d'un sujet. */
+enum class TypeDocument(val label: String, val icone: String) {
+    PHOTO("Photo", "🖼"),
+    FICHIER("Document", "📄"),
+    PIECE_JOINTE("Pièce jointe d'e-mail", "📎")
+}
+
+data class Document(
+    val id: Long = 0,
+    val sujetId: Long? = null,
+    val echangeId: Long? = null,
+    val tacheId: Long? = null,
+    val type: TypeDocument = TypeDocument.FICHIER,
+    val nom: String = "",
+    val chemin: String = "",
+    val mime: String = "",
+    val taille: Long = 0,
+    val date: Long = System.currentTimeMillis(),
+    val note: String = ""
+) {
+    val estImage: Boolean get() = mime.startsWith("image/")
+}

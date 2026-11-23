@@ -50,9 +50,22 @@ object CallLogger {
                     Prefs.setRecording(ctx, null, 0L)
                 }
 
+                // Appel lancé depuis une tâche ou un sujet : on le rattache au même sujet
+                var sujet: Long? = null
+                Prefs.appelEnAttente(ctx)?.let { (num, sid, quand) ->
+                    if (type == TypeAppel.SORTANT && sid > 0 &&
+                        com.moonsuivi.app.data.normaliserNumero(num) == com.moonsuivi.app.data.normaliserNumero(numero) &&
+                        date >= quand - 60_000 && date <= quand + 30 * 60_000
+                    ) {
+                        sujet = sid
+                        Prefs.effacerAppelEnAttente(ctx)
+                    }
+                }
+
                 Repo.saveAppel(
                     Appel(
                         numero = numero,
+                        sujetId = sujet,
                         contactId = Repo.findContactByPhone(numero)?.id,
                         type = type,
                         date = date,

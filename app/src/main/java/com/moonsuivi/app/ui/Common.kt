@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.moonsuivi.app.data.Prefs
 import com.moonsuivi.app.data.Repo
 import com.moonsuivi.app.data.StatutSujet
 import java.text.SimpleDateFormat
@@ -46,7 +47,9 @@ sealed class Ecran {
     object Contacts : Ecran()
     object Echanges : Ecran()
     object Reglages : Ecran()
+    object Aide : Ecran()
     data class SujetDetail(val id: Long) : Ecran()
+    data class Dossier(val sujetId: Long) : Ecran()
     data class ContactDetail(val id: Long) : Ecran()
 }
 
@@ -93,9 +96,10 @@ fun couleurStatut(s: StatutSujet): Color = when (s) {
 
 // ---------- Actions système ----------
 /** Appelle directement (permission « Appels ») sinon ouvre le clavier avec le numéro. */
-fun appeler(ctx: Context, numero: String) {
+fun appeler(ctx: Context, numero: String, sujetId: Long? = null) {
     val n = numero.split('/', ',', ';').first().trim()
     if (n.isBlank()) return
+    if (sujetId != null) Prefs.setAppelEnAttente(ctx, n, sujetId)
     val direct = ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
     val action = if (direct) Intent.ACTION_CALL else Intent.ACTION_DIAL
     runCatching { ctx.startActivity(Intent(action, Uri.parse("tel:" + Uri.encode(n)))) }
@@ -176,7 +180,7 @@ fun DateField(label: String, valeur: Long?, onChange: (Long?) -> Unit) {
             Text(if (valeur == null) "$label : aucune" else "$label : ${jour(valeur)}")
         }
         if (valeur != null) {
-            IconButton(onClick = { onChange(null) }) { Icon(Icons.Default.Clear, "Effacer la date") }
+            BoutonIcone(Icons.Default.Clear, "Effacer la date", onClick = { onChange(null) })
         }
     }
 }
@@ -306,6 +310,57 @@ fun SelecteurCouleur(couleur: Long, onChange: (Long) -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 if (c == couleur) Text("✓", color = Color.White)
+            }
+        }
+    }
+}
+
+// ---------- Aides : infobulles et astuces ----------
+
+/** Infobulle affichée par un appui long (ou au survol) sur [content]. */
+@Composable
+fun Infobulle(texte: String, content: @Composable () -> Unit) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(texte) } },
+        state = rememberTooltipState()
+    ) {
+        content()
+    }
+}
+
+/** Bouton icône avec infobulle : appui long pour savoir à quoi il sert. */
+@Composable
+fun BoutonIcone(
+    icone: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    teinte: Color = Color.Unspecified,
+    onClick: () -> Unit
+) {
+    Infobulle(description) {
+        IconButton(onClick = onClick, modifier = modifier, enabled = enabled) {
+            Icon(icone, description, tint = if (teinte == Color.Unspecified) LocalContentColor.current else teinte)
+        }
+    }
+}
+
+/** Astuce affichée la première fois qu'on ouvre un écran (« Compris » la masque). */
+@Composable
+fun Astuce(cle: String, texte: String) {
+    val ctx = LocalContext.current
+    var visible by remember(cle) { mutableStateOf(!Prefs.astuceVue(ctx, cle)) }
+    if (!visible) return
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(Modifier.padding(start = 12.dp, top = 10.dp, end = 4.dp), verticalAlignment = Alignment.Top) {
+            Text("💡", modifier = Modifier.padding(end = 8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(texte, style = MaterialTheme.typography.bodySmall, color = Color(0xFF4E342E))
+                TextButton(onClick = { Prefs.setAstuceVue(ctx, cle); visible = false }) { Text("Compris") }
             }
         }
     }

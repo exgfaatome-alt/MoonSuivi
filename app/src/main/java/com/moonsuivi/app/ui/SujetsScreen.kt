@@ -38,6 +38,13 @@ fun SujetsScreen(ouvrir: (Ecran) -> Unit) {
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
             )
+            Box(Modifier.padding(horizontal = 12.dp)) {
+                Astuce(
+                    "sujets",
+                    "Un sujet = une affaire, un client, un projet. Ouvrez-le pour voir ses tâches, son suivi et son 📂 dossier " +
+                        "(photos, documents, pièces jointes, appels, e-mails). Classez-les par catégorie avec « Gérer… »."
+                )
+            }
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -98,10 +105,14 @@ fun SujetsScreen(ouvrir: (Ecran) -> Unit) {
                 }
             }
         }
-        FloatingActionButton(
+        ExtendedFloatingActionButton(
             onClick = { nouveau = true },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
-        ) { Icon(Icons.Default.Add, "Nouveau sujet") }
+        ) {
+            Icon(Icons.Default.Add, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Sujet")
+        }
     }
 
     if (nouveau) {
@@ -166,6 +177,7 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
     val appels = rememberData(id) { Repo.appelsSujet(id) }
     val echanges = rememberData(id) { Repo.echangesSujet(id) }
     val categoriesDetail = rememberData { Repo.categories() }
+    val nbPieces = rememberData(id) { Repo.documentsSujet(id).size }
     val finies = LocalColonnes.current.filter { it.terminee }.map { it.id }.toSet()
     var redaction by remember { mutableStateOf<TypeMessage?>(null) }
     var choixAppel by remember { mutableStateOf(false) }
@@ -205,7 +217,7 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f)
                         )
-                        IconButton(onClick = { editSujet = true }) { Icon(Icons.Default.Edit, "Modifier") }
+                        BoutonIcone(Icons.Default.Edit, "Modifier le sujet (titre, catégorie, statut…)", onClick = { editSujet = true })
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         StatutBadge(sujet.statut)
@@ -224,7 +236,10 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
                         sujet.statut,
                         { Repo.saveSujet(sujet.copy(statut = it)) }
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         FilledTonalButton(onClick = { choixAppel = true }) {
                             Icon(Icons.Default.Phone, null); Spacer(Modifier.width(4.dp)); Text("Appeler")
                         }
@@ -236,6 +251,28 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+        }
+
+        item {
+            Card(
+                onClick = { ouvrir(Ecran.Dossier(id)) },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("📂", style = MaterialTheme.typography.headlineSmall)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Dossier", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "$nbPieces pièce(s) · ${appels.size} appel(s) · ${echanges.size} e-mail(s)/SMS",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text("Photos, documents, pièces jointes, enregistrements", style = MaterialTheme.typography.labelSmall)
+                    }
+                    Icon(Icons.Default.KeyboardArrowRight, "Ouvrir le dossier")
                 }
             }
         }
@@ -257,7 +294,7 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
 
         item {
             SectionTitre("Tâches (${taches.count { it.colonneId !in finies }} ouvertes / ${taches.size})") {
-                IconButton(onClick = { editTache = Tache(sujetId = id) }) { Icon(Icons.Default.Add, "Ajouter une tâche") }
+                BoutonIcone(Icons.Default.Add, "Ajouter une tâche", onClick = { editTache = Tache(sujetId = id) })
             }
         }
         if (taches.isEmpty()) item { Vide("Aucune tâche pour ce sujet.") }
@@ -306,7 +343,7 @@ fun SujetDetailScreen(id: Long, ouvrir: (Ecran) -> Unit) {
     editTache?.let { TacheDialog(it) { editTache = null } }
     editAppel?.let { AppelDialog(it) { editAppel = null } }
     editEchange?.let { EchangeDialog(it) { editEchange = null } }
-    if (choixAppel) ChoixAppelDialog(contactsLies) { choixAppel = false }
+    if (choixAppel) ChoixAppelDialog(contactsLies, id) { choixAppel = false }
     redaction?.let { t ->
         MessageDialog(
             type = t,
@@ -329,7 +366,7 @@ private fun NoteLigne(n: NoteSujet, onDelete: () -> Unit) {
                 Text("📝 ${jourHeure(n.date)}", style = MaterialTheme.typography.labelSmall)
                 Text(n.texte)
             }
-            IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Supprimer la note") }
+            BoutonIcone(Icons.Default.Delete, "Supprimer la note", onClick = onDelete)
         }
     }
 }

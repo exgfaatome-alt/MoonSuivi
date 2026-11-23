@@ -140,7 +140,14 @@ fun KanbanScreen() {
                     { filtreSujet = it },
                     Modifier.weight(1f)
                 )
-                IconButton(onClick = { configurer = true }) { Icon(Icons.Default.Settings, "Configurer les colonnes") }
+                BoutonIcone(Icons.Default.Settings, "Configurer les colonnes", onClick = { configurer = true })
+            }
+            Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                Astuce(
+                    "kanban",
+                    "Appui long sur une carte puis glissez-la vers une autre colonne. ⚙ configure les colonnes. " +
+                        "Les icônes 📞 ✈ ✉ d'une carte appellent ou écrivent au contact de la tâche."
+                )
             }
             Text(
                 "Appui long sur une carte puis glissez-la pour la déplacer",
@@ -204,10 +211,14 @@ fun KanbanScreen() {
         }
 
         if (!drag.actif) {
-            FloatingActionButton(
+            ExtendedFloatingActionButton(
                 onClick = { edition = Tache(sujetId = filtreSujet) },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
-            ) { Icon(Icons.Default.Add, "Nouvelle tâche") }
+            ) {
+            Icon(Icons.Default.Add, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Tâche")
+        }
         }
     }
 
@@ -265,7 +276,7 @@ private fun KanbanColonne(
                     if (col.limite > 0) "${cartes.size}/${col.limite}" else "${cartes.size}",
                     if (depasse) Color(0xFFD32F2F) else couleur
                 )
-                IconButton(onClick = onAdd) { Icon(Icons.Default.Add, "Ajouter dans ${col.nom}") }
+                BoutonIcone(Icons.Default.Add, "Ajouter dans ${col.nom}", onClick = onAdd)
             }
             Column(
                 Modifier
@@ -402,6 +413,9 @@ fun TacheCarte(
                     style = MaterialTheme.typography.labelMedium,
                     color = if (enRetard) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            if (t.contactId != null) {
+                ActionsContact(t.contactId, t.sujetId, t.titre, compact = true)
             }
             if (onMove != null && col != null) {
                 val i = colonnes.indexOfFirst { it.id == col.id }

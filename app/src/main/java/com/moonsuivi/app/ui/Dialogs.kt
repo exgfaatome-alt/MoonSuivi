@@ -53,6 +53,11 @@ fun TacheDialog(initial: Tache, onDismiss: () -> Unit) {
         DateField("Échéance", t.echeance) { t = t.copy(echeance = it) }
         ChoiceField("Sujet", optionsSujets(sujets), t.sujetId, { t = t.copy(sujetId = it) })
         ChoiceField("Contact", optionsContacts(contacts), t.contactId, { t = t.copy(contactId = it) })
+        if (initial.id != 0L) {
+            Text("Contacter", style = MaterialTheme.typography.labelMedium)
+            ActionsContact(t.contactId, t.sujetId, t.titre)
+            Indication("L'appel, le SMS ou l'e-mail sera rangé dans le sujet de la tâche.")
+        }
     }
 }
 
@@ -175,7 +180,7 @@ fun CategoriesDialog(onDismiss: () -> Unit) {
                             Text(c.nom, fontWeight = FontWeight.SemiBold)
                             Text("${sujets.count { it.categorieId == c.id }} sujet(s)", style = MaterialTheme.typography.labelSmall)
                         }
-                        IconButton(onClick = { edition = c }) { Icon(Icons.Default.Edit, "Modifier") }
+                        BoutonIcone(Icons.Default.Edit, "Modifier la catégorie", onClick = { edition = c })
                     }
                 }
                 TextButton(onClick = { edition = Categorie(couleur = PALETTE[categories.size % PALETTE.size]) }) {

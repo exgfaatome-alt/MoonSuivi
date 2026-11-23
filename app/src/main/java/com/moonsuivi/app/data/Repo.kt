@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import java.io.File
 
-private class Db(ctx: Context) : SQLiteOpenHelper(ctx, "moonsuivi.db", null, 3) {
+private class Db(ctx: Context) : SQLiteOpenHelper(ctx, "moonsuivi.db", null, 4) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             "CREATE TABLE sujets(id INTEGER PRIMARY KEY AUTOINCREMENT, titre TEXT NOT NULL, " +
@@ -46,6 +46,7 @@ private class Db(ctx: Context) : SQLiteOpenHelper(ctx, "moonsuivi.db", null, 3) 
     private fun migrer(db: SQLiteDatabase, depuis: Int) {
         if (depuis < 2) creerEchanges(db)
         if (depuis < 3) versionTrois(db)
+        if (depuis < 4) versionQuatre(db)
     }
 
     /** v3 : colonnes configurables, ordre manuel des tâches, catégories, journal. */
@@ -83,6 +84,18 @@ private class Db(ctx: Context) : SQLiteOpenHelper(ctx, "moonsuivi.db", null, 3) 
                 "type TEXT NOT NULL, texte TEXT NOT NULL, sujet_id INTEGER, contact_id INTEGER)"
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_journal_date ON journal(date)")
+    }
+
+    /** v4 : pièces du dossier (photos, documents, pièces jointes d'e-mails). */
+    private fun versionQuatre(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY AUTOINCREMENT, sujet_id INTEGER, " +
+                "echange_id INTEGER, tache_id INTEGER, type TEXT NOT NULL, nom TEXT NOT NULL, chemin TEXT NOT NULL, " +
+                "mime TEXT NOT NULL DEFAULT '', taille INTEGER NOT NULL DEFAULT 0, date INTEGER NOT NULL, " +
+                "note TEXT NOT NULL DEFAULT '')"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_documents_sujet ON documents(sujet_id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_documents_echange ON documents(echange_id)")
     }
 
     private fun creerEchanges(db: SQLiteDatabase) {
@@ -224,6 +237,11 @@ object Repo {
         w.execSQL("UPDATE appels SET sujet_id=NULL WHERE sujet_id=?", arrayOf<Any>(id))
         w.execSQL("UPDATE echanges SET sujet_id=NULL WHERE sujet_id=?", arrayOf<Any>(id))
         w.execSQL("UPDATE journal SET sujet_id=NULL WHERE sujet_id=?", arrayOf<Any>(id))
+        // Les photos et documents ajoutés au dossier sont supprimés avec lui
+        list("SELECT * FROM documents WHERE sujet_id=? AND echange_id IS NULL", a, ::documentOf).forEach {
+            runCatching { File(it.chemin).delete() }
+        }
+        w.delete("documents", "sujet_id=? AND echange_id IS NULL", a)
         notifyChanged()
     }
 
@@ -538,6 +556,8 @@ object Repo {
     }
 
     fun deleteEchange(id: Long) {
+        documentsEchange(id).forEach { runCatching { File(it.chemin).delete() } }
+        w.delete("documents", "echange_id=?", arrayOf(id.toString()))
         w.delete("echanges", "id=?", arrayOf(id.toString()))
         notifyChanged()
     }
@@ -681,4 +701,65 @@ object Repo {
 
     fun echangesDepuis(depuis: Long): List<Echange> =
         list("SELECT * FROM echanges WHERE date >= ? ORDER BY date DESC", arrayOf(depuis.toString()), ::echangeOf)
+
+    // ---------- Dossier : photos, documents, pièces jointes ----------
+    private fun documentOf(c: Cursor) = Document(
+        id = c.lng("id"),
+        sujetId = c.lngN("sujet_id"),
+        echangeId = c.lngN("echange_id"),
+        tacheId = c.lngN("tache_id"),
+        type = runCatching { TypeDocument.valueOf(c.str("type")) }.getOrDefault(TypeDocument.FICHIER),
+        nom = c.str("nom"),
+        chemin = c.str("chemin"),
+        mime = c.str("mime"),
+        taille = c.lng("taille"),
+        date = c.lng("date"),
+        note = c.str("note")
+    )
+
+    /** Pièces du dossier : ajoutées directement, ou jointes à un e-mail rattaché au sujet. */
+    fun documentsSujet(sujetId: Long): List<Document> = list(
+        "SELECT * FROM documents WHERE sujet_id=? OR echange_id IN (SELECT id FROM echanges WHERE sujet_id=?) " +
+            "ORDER BY date DESC",
+        arrayOf(sujetId.toString(), sujetId.toString()), ::documentOf
+    )
+
+    fun documentsEchange(echangeId: Long): List<Document> =
+        list("SELECT * FROM documents WHERE echange_id=? ORDER BY nom", arrayOf(echangeId.toString()), ::documentOf)
+
+    fun nbDocumentsParSujet(): Map<Long, Int> = list(
+        "SELECT s, COUNT(*) AS n FROM (SELECT IFNULL(d.sujet_id, e.sujet_id) AS s FROM documents d " +
+            "LEFT JOIN echanges e ON e.id = d.echange_id) WHERE s IS NOT NULL GROUP BY s",
+        null
+    ) { c -> c.lng("s") to c.lng("n").toInt() }.toMap()
+
+    fun saveDocument(d: Document, notifier: Boolean = true): Long {
+        val cv = ContentValues().apply {
+            putN("sujet_id", d.sujetId)
+            putN("echange_id", d.echangeId)
+            putN("tache_id", d.tacheId)
+            put("type", d.type.name)
+            put("nom", d.nom)
+            put("chemin", d.chemin)
+            put("mime", d.mime)
+            put("taille", d.taille)
+            put("date", d.date)
+            put("note", d.note)
+        }
+        val id = if (d.id == 0L) w.insert("documents", null, cv) else {
+            w.update("documents", cv, "id=?", arrayOf(d.id.toString())); d.id
+        }
+        if (d.id == 0L && d.echangeId == null && d.sujetId != null) {
+            journaliser(TypeJournal.SUJET, "${d.type.icone} Ajouté au dossier : ${d.nom}", sujetId = d.sujetId)
+            toucherSujet(d.sujetId)
+        }
+        if (notifier) notifyChanged()
+        return id
+    }
+
+    fun deleteDocument(d: Document) {
+        runCatching { File(d.chemin).delete() }
+        w.delete("documents", "id=?", arrayOf(d.id.toString()))
+        notifyChanged()
+    }
 }

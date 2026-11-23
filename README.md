@@ -10,9 +10,11 @@ Application de suivi d'activité : **sujets**, **contacts**, **tâches en kanban
 | **Tâches** | Kanban à **colonnes configurables** (nom, couleur, ordre, limite de cartes, colonne « terminé » ✓). **Glisser-déposer** : appui long sur une carte puis glissez-la (défilement automatique près des bords). |
 | **Agenda** | Calendrier mensuel des échéances et des appels. |
 | **Sujets** | Sujets classés par **catégorie** (couleurs, filtre) et statut. Fiche : tâches, contacts liés, journal de suivi, boutons Appeler / SMS / E-mail. |
+| **Dossier 📂** (dans chaque sujet) | Toutes les pièces du sujet : photos prises avec l'appareil, fichiers du téléphone, pièces jointes des e-mails (automatique), appels avec enregistrement, e-mails, SMS. Ouvrir, partager, renommer, annoter, déplacer, envoyer par e-mail. |
 | **Contacts** | Fiches, import du téléphone, historique des échanges. |
 | **Échanges** | Appels, e-mails et SMS, filtrables. |
 | **Journal** | Fil chronologique de toute l'activité, jour par jour : notes libres (✏), tâches créées / déplacées / terminées, changements de statut des sujets, appels, e-mails, SMS. Recherche et filtres. |
+| **Aide** | Guide complet (menu ☰), aide de chaque écran (ⓘ en haut), infobulles (appui long sur une icône), astuces 💡 au premier passage. |
 | **Réglages ⚙** | Fonctionnement permanent, colonnes, catégories, autorisations, messagerie, enregistrement des appels, mises à jour. |
 
 Le menu ☰ (en haut à gauche) donne accès à tous les écrans.
@@ -21,6 +23,7 @@ Le menu ☰ (en haut à gauche) donne accès à tous les écrans.
 MoonSuivi tourne en permanence en arrière-plan (notification discrète « MoonSuivi est actif ») et redémarre seul après un redémarrage du téléphone. Dans Réglages, désactivez l'optimisation de batterie pour MoonSuivi ; sur Xiaomi / Huawei / Oppo / Samsung, autorisez aussi le démarrage automatique.
 
 ### Communiquer depuis l'appli
+- **Depuis une tâche** : icônes 📞 ✈ ✉ sur la carte (et boutons dans la fiche de la tâche) pour appeler, envoyer un SMS ou un e-mail au contact lié ; l'échange est rangé dans le sujet de la tâche.
 - **Téléphoner** : appel direct depuis une fiche contact, un sujet ou un échange.
 - **SMS** : envoyé directement depuis l'appli ; les SMS reçus de vos contacts sont enregistrés automatiquement.
 - **E-mail** : envoyé directement si la messagerie est configurée (Réglages ⚙), sinon via votre appli e-mail.

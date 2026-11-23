@@ -110,7 +110,8 @@ private val MENU = listOf(
     Onglet(Ecran.Contacts, "Contacts", Icons.Default.Person),
     Onglet(Ecran.Echanges, "Appels, e-mails, SMS", Icons.Default.Email),
     Onglet(Ecran.Journal, "Journal", Icons.Default.Edit),
-    Onglet(Ecran.Reglages, "Réglages", Icons.Default.Settings)
+    Onglet(Ecran.Reglages, "Réglages", Icons.Default.Settings),
+    Onglet(Ecran.Aide, "Aide et guide", Icons.Default.Info)
 )
 
 @Composable
@@ -120,6 +121,7 @@ fun App(partage: MutableState<Echange?>) {
     val tiroir = rememberDrawerState(DrawerValue.Closed)
     var pile by remember { mutableStateOf(listOf<Ecran>(Ecran.Accueil)) }
     var maj by remember { mutableStateOf<InfoMaj?>(null) }
+    var aide by remember { mutableStateOf(false) }
     val colonnes = rememberData { Repo.colonnes() }
 
     // Vérification automatique des mises à jour (au plus toutes les 6 h)
@@ -153,6 +155,8 @@ fun App(partage: MutableState<Echange?>) {
         Ecran.Echanges -> "Appels, e-mails et SMS"
         Ecran.Journal -> "Journal"
         Ecran.Reglages -> "Réglages"
+        Ecran.Aide -> "Aide"
+        is Ecran.Dossier -> "Dossier"
         is Ecran.SujetDetail -> "Sujet"
         is Ecran.ContactDetail -> "Contact"
     }
@@ -184,18 +188,23 @@ fun App(partage: MutableState<Echange?>) {
                     TopAppBar(
                         title = { Text(titre) },
                         actions = {
+                            BoutonIcone(
+                                Icons.Default.Info, "Aide sur cet écran",
+                                teinte = MaterialTheme.colorScheme.onPrimary
+                            ) { aide = true }
                             if (courant != Ecran.Reglages) {
-                                IconButton(onClick = { pile = pile + Ecran.Reglages }) {
-                                    Icon(Icons.Default.Settings, "Réglages", tint = MaterialTheme.colorScheme.onPrimary)
-                                }
+                                BoutonIcone(
+                                    Icons.Default.Settings, "Réglages",
+                                    teinte = MaterialTheme.colorScheme.onPrimary
+                                ) { pile = pile + Ecran.Reglages }
                             }
                         },
                         navigationIcon = {
                             if (pile.size > 1) {
-                                IconButton(onClick = retour) { Icon(Icons.Default.ArrowBack, "Retour") }
+                                BoutonIcone(Icons.Default.ArrowBack, "Retour", onClick = retour)
                             } else {
-                                IconButton(onClick = { scope.launch { tiroir.open() } }) {
-                                    Icon(Icons.Default.Menu, "Menu")
+                                BoutonIcone(Icons.Default.Menu, "Menu : tous les écrans") {
+                                    scope.launch { tiroir.open() }
                                 }
                             }
                         },
@@ -229,6 +238,8 @@ fun App(partage: MutableState<Echange?>) {
                         Ecran.Echanges -> EchangesScreen()
                         Ecran.Journal -> JournalScreen(ouvrir)
                         Ecran.Reglages -> ReglagesScreen { maj = it }
+                        Ecran.Aide -> AideScreen()
+                        is Ecran.Dossier -> key(e.sujetId) { DossierScreen(e.sujetId, ouvrir) }
                         is Ecran.SujetDetail -> key(e.id) { SujetDetailScreen(e.id, ouvrir) }
                         is Ecran.ContactDetail -> key(e.id) { ContactDetailScreen(e.id, ouvrir) }
                     }
@@ -237,6 +248,12 @@ fun App(partage: MutableState<Echange?>) {
         }
 
         maj?.let { MajDialog(it) { maj = null } }
+        if (aide) {
+            AideDialog(courant, onDismiss = { aide = false }) {
+                aide = false
+                pile = pile + Ecran.Aide
+            }
+        }
         partage.value?.let { EchangeDialog(it) { partage.value = null } }
     }
 }

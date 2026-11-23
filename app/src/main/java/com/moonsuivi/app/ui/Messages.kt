@@ -63,6 +63,10 @@ fun MessageDialog(
     var texte by remember { mutableStateOf("") }
     var envoi by remember { mutableStateOf(false) }
     var erreur by remember { mutableStateOf<String?>(null) }
+    var pieces by remember { mutableStateOf(emptySet<Long>()) }
+    var choixPieces by remember { mutableStateOf(false) }
+    val docsDossier = rememberData(sid) { sid?.let { Repo.documentsSujet(it) } ?: emptyList() }
+    val fichiersJoints = docsDossier.filter { it.id in pieces }
 
     fun journaliser(canal: Canal, messageId: String?) {
         val adresse = dest.trim()
@@ -75,7 +79,8 @@ fun MessageDialog(
                 sujetId = sid,
                 adresse = adresse,
                 objet = if (mode == TypeMessage.EMAIL) obj else "",
-                contenu = texte,
+                contenu = if (canal.estEmail && fichiersJoints.isNotEmpty())
+                    texte + "\n\n📎 " + fichiersJoints.joinToString(", ") { it.nom } else texte,
                 messageId = messageId
             )
         )
@@ -111,7 +116,7 @@ fun MessageDialog(
                 envoi = true
                 scope.launch {
                     try {
-                        val mid = withContext(Dispatchers.IO) { Courrier.envoyer(config, dest.trim(), obj, texte) }
+                        val mid = withContext(Dispatchers.IO) { Courrier.envoyer(config, dest.trim(), obj, texte, fichiersJoints.map { java.io.File(it.chemin) }) }
                         journaliser(Canal.EMAIL_ENVOYE, mid)
                         onDismiss()
                     } catch (e: Exception) {
@@ -121,7 +126,8 @@ fun MessageDialog(
                 }
             }
             else -> {
-                ecrireEmail(ctx, dest, obj, texte)
+                if (fichiersJoints.isEmpty()) ecrireEmail(ctx, dest, obj, texte)
+                else Fichiers.emailAvecPieces(ctx, dest, obj, texte, fichiersJoints.map { java.io.File(it.chemin) })
                 journaliser(Canal.EMAIL_ENVOYE, null)
                 onDismiss()
             }
@@ -171,7 +177,14 @@ fun MessageDialog(
             value = texte, onValueChange = { texte = it },
             label = { Text("Message") }, minLines = 5, modifier = Modifier.fillMaxWidth()
         )
-        ChoiceField("Rattacher au sujet", optionsSujets(sujets), sid, { sid = it })
+        ChoiceField("Rattacher au sujet", optionsSujets(sujets), sid, { sid = it; pieces = emptySet() })
+        if (mode == TypeMessage.EMAIL && docsDossier.isNotEmpty()) {
+            Infobulle("Joindre des photos ou documents du dossier de ce sujet") {
+                OutlinedButton(onClick = { choixPieces = true }) {
+                    Text(if (pieces.isEmpty()) "📎 Joindre des pièces du dossier" else "📎 ${pieces.size} pièce(s) jointe(s)")
+                }
+            }
+        }
         Text(
             when {
                 mode == TypeMessage.SMS -> "Le SMS est envoyé directement depuis votre forfait."
@@ -184,6 +197,10 @@ fun MessageDialog(
         )
         if (envoi) LinearProgressIndicator(Modifier.fillMaxWidth())
         erreur?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    }
+
+    if (choixPieces) {
+        ChoixPiecesDialog(docsDossier, pieces, { pieces = it }) { choixPieces = false }
     }
 }
 
@@ -291,7 +308,7 @@ fun EchangeDialog(initial: Echange, onDismiss: () -> Unit) {
 
 /** Choisir qui appeler (depuis un sujet). */
 @Composable
-fun ChoixAppelDialog(contactIds: List<Long>, onDismiss: () -> Unit) {
+fun ChoixAppelDialog(contactIds: List<Long>, sujetId: Long? = null, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val tous = rememberData { Repo.contacts() }
     val liste = remember(tous, contactIds) {
@@ -311,7 +328,7 @@ fun ChoixAppelDialog(contactIds: List<Long>, onDismiss: () -> Unit) {
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clickable { appeler(ctx, num); onDismiss() }
+                                    .clickable { appeler(ctx, num, sujetId); onDismiss() }
                                     .padding(vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -329,4 +346,76 @@ fun ChoixAppelDialog(contactIds: List<Long>, onDismiss: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } }
     )
+}
+
+/**
+ * Boutons Appeler / SMS / E-mail pour un contact (depuis une tâche, un sujet…).
+ * L'appel, le SMS ou l'e-mail est automatiquement rattaché au sujet [sujetId].
+ * [compact] = petites icônes (cartes du kanban), sinon boutons avec libellé.
+ */
+@Composable
+fun ActionsContact(contactId: Long?, sujetId: Long?, objet: String, compact: Boolean = false) {
+    val ctx = LocalContext.current
+    val contact = rememberData(contactId) { contactId?.let { Repo.contact(it) } }
+    var redaction by remember { mutableStateOf<TypeMessage?>(null) }
+    var choixAppel by remember { mutableStateOf(false) }
+    val tel = contact?.let { telephonesDe(it) }.orEmpty()
+    val mails = contact?.let { emailsDe(it) }.orEmpty()
+
+    val surAppel: () -> Unit = {
+        if (tel.size == 1) {
+            appeler(ctx, tel[0], sujetId)
+        } else {
+            choixAppel = true
+        }
+    }
+
+    if (compact) {
+        if (contact == null) return
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = surAppel, enabled = tel.isNotEmpty(), modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Phone, "Appeler ${contact.nom}", modifier = Modifier.size(18.dp))
+            }
+            IconButton(onClick = { redaction = TypeMessage.SMS }, enabled = tel.isNotEmpty(), modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Send, "SMS à ${contact.nom}", modifier = Modifier.size(18.dp))
+            }
+            IconButton(onClick = { redaction = TypeMessage.EMAIL }, enabled = mails.isNotEmpty(), modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Email, "E-mail à ${contact.nom}", modifier = Modifier.size(18.dp))
+            }
+        }
+    } else {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Infobulle(if (contact != null) "Appeler ${contact.nom}" else "Choisir un contact à appeler") {
+                FilledTonalButton(onClick = surAppel, enabled = contact == null || tel.isNotEmpty()) {
+                    Icon(Icons.Default.Phone, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Appeler")
+                }
+            }
+            Infobulle("Envoyer un SMS (rattaché au sujet)") {
+                FilledTonalButton(onClick = { redaction = TypeMessage.SMS }, enabled = contact == null || tel.isNotEmpty()) {
+                    Text("SMS")
+                }
+            }
+            Infobulle("Envoyer un e-mail (rattaché au sujet)") {
+                FilledTonalButton(onClick = { redaction = TypeMessage.EMAIL }, enabled = contact == null || mails.isNotEmpty()) {
+                    Text("E-mail")
+                }
+            }
+        }
+    }
+
+    if (choixAppel) ChoixAppelDialog(listOfNotNull(contactId), sujetId) { choixAppel = false }
+    redaction?.let { t ->
+        MessageDialog(
+            type = t,
+            contactId = contactId,
+            sujetId = sujetId,
+            objet = if (t == TypeMessage.EMAIL) objet else "",
+            onDismiss = { redaction = null }
+        )
+    }
 }
