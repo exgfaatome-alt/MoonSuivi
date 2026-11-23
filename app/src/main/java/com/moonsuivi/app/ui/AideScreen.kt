@@ -21,6 +21,7 @@ data class SectionAide(val icone: String, val titre: String, val texte: String)
 private val AIDE_ACCUEIL = SectionAide(
     "🏠", "Tableau de bord",
     "L'écran d'accueil résume votre journée.\n" +
+        "• Les tâches 🔥 urgentes sont listées en premier ; un graphique montre la répartition par priorité.\n" +
         "• Les 4 compteurs (tâches ouvertes, en retard, du jour, sujets actifs) sont cliquables.\n" +
         "• Les listes « En retard », « Aujourd'hui » et « Dans les 7 prochains jours » reprennent les tâches à échéance.\n" +
         "• Les graphiques montrent l'avancement du kanban, les sujets par catégorie et vos échanges de la semaine.\n" +
@@ -36,7 +37,8 @@ private val AIDE_TACHES = SectionAide(
         "• 📞 ✈ ✉ sur une carte : appeler, envoyer un SMS ou un e-mail au contact de la tâche. " +
         "L'échange est rangé automatiquement dans le sujet de la tâche.\n" +
         "• ⚙ : configurer les colonnes (nom, couleur, ordre, nombre maximum de cartes, colonne « terminé » ✓).\n" +
-        "• Le point de couleur indique la priorité : rouge = haute, bleu = normale, gris = basse."
+        "• Priorité : 4 niveaux (point de couleur) — gris = basse, bleu = normale, orange ⬆ = haute, rouge 🔥 = urgente " +
+        "(carte encadrée de rouge). Filtres « Haute et + » / « Urgentes » et « Trier par priorité » en haut du tableau."
 )
 
 private val AIDE_AGENDA = SectionAide(
@@ -124,7 +126,8 @@ private val FAQ = SectionAide(
         "sur Xiaomi/Huawei/Samsung autorisez aussi le démarrage automatique.\n" +
         "• La mise à jour ne s'installe pas : autorisez « Installer des applis inconnues » pour MoonSuivi.\n" +
         "• Où sont mes données ? Uniquement sur le téléphone. Pensez à faire des sauvegardes du téléphone.\n" +
-        "• Appui long sur un bouton icône : une bulle explique à quoi il sert."
+        "• Appui long sur un bouton icône : une bulle explique à quoi il sert.\n" +
+        "• Mode sombre : menu ☰ › 🌙 Mode sombre, ou Réglages › Apparence (clair, sombre ou comme le téléphone)."
 )
 
 val GUIDE: List<SectionAide> = listOf(

@@ -370,6 +370,13 @@ object Repo {
         } else if (avant.colonneId != colonne) {
             journaliserDeplacement(t.titre, avant.colonneId, colonne, t.sujetId, t.contactId)
         }
+        if (avant != null && avant.priorite != t.priorite) {
+            journaliser(
+                TypeJournal.TACHE,
+                "« ${t.titre} » : priorité ${libellePriorite(avant.priorite).lowercase()} → ${libellePriorite(t.priorite).lowercase()}",
+                t.sujetId, t.contactId
+            )
+        }
         toucherSujet(t.sujetId)
         notifyChanged()
         return id

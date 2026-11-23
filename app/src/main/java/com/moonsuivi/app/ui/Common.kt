@@ -29,6 +29,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.moonsuivi.app.data.PRIORITES
+import com.moonsuivi.app.data.PRIORITE_BASSE
+import com.moonsuivi.app.data.PRIORITE_HAUTE
+import com.moonsuivi.app.data.PRIORITE_URGENTE
 import com.moonsuivi.app.data.Prefs
 import com.moonsuivi.app.data.Repo
 import com.moonsuivi.app.data.StatutSujet
@@ -82,9 +86,17 @@ fun debutJour(ms: Long): Long = Calendar.getInstance().apply {
 }.timeInMillis
 
 fun couleurPriorite(p: Int): Color = when (p) {
-    2 -> Color(0xFFD32F2F)
-    0 -> Color(0xFF9E9E9E)
+    PRIORITE_URGENTE -> Color(0xFFD32F2F)
+    PRIORITE_HAUTE -> Color(0xFFF57C00)
+    PRIORITE_BASSE -> Color(0xFF9E9E9E)
     else -> Color(0xFF1976D2)
+}
+
+fun iconePriorite(p: Int): String = when (p) {
+    PRIORITE_URGENTE -> "🔥"
+    PRIORITE_HAUTE -> "⬆"
+    PRIORITE_BASSE -> "⬇"
+    else -> "•"
 }
 
 fun couleurStatut(s: StatutSujet): Color = when (s) {
@@ -353,14 +365,38 @@ fun Astuce(cle: String, texte: String) {
     var visible by remember(cle) { mutableStateOf(!Prefs.astuceVue(ctx, cle)) }
     if (!visible) return
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(Modifier.padding(start = 12.dp, top = 10.dp, end = 4.dp), verticalAlignment = Alignment.Top) {
             Text("💡", modifier = Modifier.padding(end = 8.dp))
             Column(Modifier.weight(1f)) {
-                Text(texte, style = MaterialTheme.typography.bodySmall, color = Color(0xFF4E342E))
+                Text(texte, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
                 TextButton(onClick = { Prefs.setAstuceVue(ctx, cle); visible = false }) { Text("Compris") }
+            }
+        }
+    }
+}
+
+/** Choix de la priorité par pastilles colorées. */
+@Composable
+fun SelecteurPriorite(valeur: Int, onChange: (Int) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Priorité", style = MaterialTheme.typography.labelMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            PRIORITES.forEach { (p, libelle) ->
+                val choisi = p == valeur
+                Infobulle("Priorité ${libelle.lowercase()}") {
+                    FilterChip(
+                        selected = choisi,
+                        onClick = { onChange(p) },
+                        label = { Text(libelle, maxLines = 1) },
+                        leadingIcon = { Point(couleurPriorite(p)) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = couleurPriorite(p).copy(alpha = 0.25f)
+                        )
+                    )
+                }
             }
         }
     }

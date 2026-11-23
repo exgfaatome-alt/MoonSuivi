@@ -7,7 +7,7 @@ Application de suivi d'activité : **sujets**, **contacts**, **tâches en kanban
 | Écran | Ce qu'il fait |
 |---|---|
 | **Tableau de bord** | Écran d'accueil : tâches ouvertes / en retard / du jour, sujets actifs, avancement du kanban, sujets par catégorie, échanges des 7 derniers jours, activité récente. |
-| **Tâches** | Kanban à **colonnes configurables** (nom, couleur, ordre, limite de cartes, colonne « terminé » ✓). **Glisser-déposer** : appui long sur une carte puis glissez-la (défilement automatique près des bords). |
+| **Tâches** | Kanban avec **priorités** (basse, normale, haute ⬆, urgente 🔥 encadrée de rouge ; filtres et tri par priorité) et **colonnes configurables** (nom, couleur, ordre, limite de cartes, colonne « terminé » ✓). **Glisser-déposer** : appui long sur une carte puis glissez-la (défilement automatique près des bords). |
 | **Agenda** | Calendrier mensuel des échéances et des appels. |
 | **Sujets** | Sujets classés par **catégorie** (couleurs, filtre) et statut. Fiche : tâches, contacts liés, journal de suivi, boutons Appeler / SMS / E-mail. |
 | **Dossier 📂** (dans chaque sujet) | Toutes les pièces du sujet : photos prises avec l'appareil, fichiers du téléphone, pièces jointes des e-mails (automatique), appels avec enregistrement, e-mails, SMS. Ouvrir, partager, renommer, annoter, déplacer, envoyer par e-mail. |
@@ -15,6 +15,7 @@ Application de suivi d'activité : **sujets**, **contacts**, **tâches en kanban
 | **Échanges** | Appels, e-mails et SMS, filtrables. |
 | **Journal** | Fil chronologique de toute l'activité, jour par jour : notes libres (✏), tâches créées / déplacées / terminées, changements de statut des sujets, appels, e-mails, SMS. Recherche et filtres. |
 | **Aide** | Guide complet (menu ☰), aide de chaque écran (ⓘ en haut), infobulles (appui long sur une icône), astuces 💡 au premier passage. |
+| **Mode sombre 🌙** | Menu ☰ › Mode sombre, ou Réglages › Apparence : clair, sombre ou comme le téléphone. |
 | **Réglages ⚙** | Fonctionnement permanent, colonnes, catégories, autorisations, messagerie, enregistrement des appels, mises à jour. |
 
 Le menu ☰ (en haut à gauche) donne accès à tous les écrans.

@@ -49,7 +49,7 @@ fun TacheDialog(initial: Tache, onDismiss: () -> Unit) {
             if (colonnes.any { it.id == t.colonneId }) t.colonneId else colonnes.firstOrNull()?.id ?: 0L,
             { t = t.copy(colonneId = it) }
         )
-        ChoiceField("Priorité", PRIORITES, t.priorite, { t = t.copy(priorite = it) })
+        SelecteurPriorite(t.priorite) { t = t.copy(priorite = it) }
         DateField("Échéance", t.echeance) { t = t.copy(echeance = it) }
         ChoiceField("Sujet", optionsSujets(sujets), t.sujetId, { t = t.copy(sujetId = it) })
         ChoiceField("Contact", optionsContacts(contacts), t.contactId, { t = t.copy(contactId = it) })

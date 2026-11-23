@@ -51,7 +51,19 @@ enum class TypeAppel(val label: String) {
     AUTRE("Autre")
 }
 
-val PRIORITES: List<Pair<Int, String>> = listOf(0 to "Basse", 1 to "Normale", 2 to "Haute")
+const val PRIORITE_BASSE = 0
+const val PRIORITE_NORMALE = 1
+const val PRIORITE_HAUTE = 2
+const val PRIORITE_URGENTE = 3
+
+val PRIORITES: List<Pair<Int, String>> = listOf(
+    PRIORITE_BASSE to "Basse",
+    PRIORITE_NORMALE to "Normale",
+    PRIORITE_HAUTE to "Haute",
+    PRIORITE_URGENTE to "Urgente"
+)
+
+fun libellePriorite(p: Int): String = PRIORITES.firstOrNull { it.first == p }?.second ?: "Normale"
 
 data class Sujet(
     val id: Long = 0,

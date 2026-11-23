@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -76,6 +77,8 @@ fun KanbanScreen() {
     val nomSujet = remember(sujets) { sujets.associate { it.id to it.titre } }
     val nomContact = remember(contacts) { contacts.associate { it.id to it.nom } }
     var filtreSujet by remember { mutableStateOf<Long?>(null) }
+    var prioriteMin by remember { mutableStateOf(PRIORITE_BASSE) }
+    var trierParPriorite by remember { mutableStateOf(false) }
     var edition by remember { mutableStateOf<Tache?>(null) }
     var configurer by remember { mutableStateOf(false) }
 
@@ -88,10 +91,11 @@ fun KanbanScreen() {
 
     val idsColonnes = colonnes.map { it.id }.toSet()
     val premiere = colonnes.firstOrNull()?.id ?: 0L
-    val visibles = taches.filter { filtreSujet == null || it.sujetId == filtreSujet }
+    val visibles = taches.filter { (filtreSujet == null || it.sujetId == filtreSujet) && it.priorite >= prioriteMin }
     // Une tâche dont la colonne a disparu est affichée dans la première colonne
     val parColonne = colonnes.associate { c ->
-        c.id to visibles.filter { (if (it.colonneId in idsColonnes) it.colonneId else premiere) == c.id }
+        val liste = visibles.filter { (if (it.colonneId in idsColonnes) it.colonneId else premiere) == c.id }
+        c.id to if (trierParPriorite) liste.sortedByDescending { it.priorite } else liste
     }
     drag.listes = parColonne
 
@@ -100,6 +104,11 @@ fun KanbanScreen() {
         val c = drag.cible
         drag.annuler()
         if (t == null || c == null) return
+        // Trié par priorité : l'ordre est imposé, on change seulement de colonne
+        if (trierParPriorite) {
+            if (t.colonneId != c.first) Repo.moveTache(t.id, c.first)
+            return
+        }
         // Traduit la position dans la liste filtrée en position dans la colonne complète
         val avant = parColonne[c.first].orEmpty().filter { it.id != t.id }.getOrNull(c.second)?.id
         val complete = taches.filter { it.colonneId == c.first && it.id != t.id }
@@ -141,6 +150,43 @@ fun KanbanScreen() {
                     Modifier.weight(1f)
                 )
                 BoutonIcone(Icons.Default.Settings, "Configurer les colonnes", onClick = { configurer = true })
+            }
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                item {
+                    FilterChip(
+                        selected = prioriteMin == PRIORITE_BASSE,
+                        onClick = { prioriteMin = PRIORITE_BASSE },
+                        label = { Text("Toutes") }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = prioriteMin == PRIORITE_HAUTE,
+                        onClick = { prioriteMin = if (prioriteMin == PRIORITE_HAUTE) PRIORITE_BASSE else PRIORITE_HAUTE },
+                        label = { Text("⬆ Haute et +") },
+                        leadingIcon = { Point(couleurPriorite(PRIORITE_HAUTE)) }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = prioriteMin == PRIORITE_URGENTE,
+                        onClick = { prioriteMin = if (prioriteMin == PRIORITE_URGENTE) PRIORITE_BASSE else PRIORITE_URGENTE },
+                        label = { Text("🔥 Urgentes") },
+                        leadingIcon = { Point(couleurPriorite(PRIORITE_URGENTE)) }
+                    )
+                }
+                item {
+                    Infobulle("Classer les cartes de chaque colonne de la plus urgente à la moins urgente") {
+                        FilterChip(
+                            selected = trierParPriorite,
+                            onClick = { trierParPriorite = !trierParPriorite },
+                            label = { Text("Trier par priorité") }
+                        )
+                    }
+                }
             }
             Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
                 Astuce(
@@ -383,7 +429,12 @@ fun TacheCarte(
     val termine = col?.terminee == true
     val ech = t.echeance
     val enRetard = ech != null && ech < debutJour(System.currentTimeMillis()) && !termine
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+    val urgente = t.priorite >= PRIORITE_URGENTE && !termine
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        border = if (urgente) BorderStroke(2.dp, couleurPriorite(PRIORITE_URGENTE)) else null
+    ) {
         Column(Modifier.padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = if (onMove != null) 2.dp else 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Point(couleurPriorite(t.priorite))
@@ -396,6 +447,11 @@ fun TacheCarte(
                 )
                 if (!dansKanban && col != null) Pastille(col.nom, Color(col.couleur))
                 Spacer(Modifier.width(8.dp))
+            }
+            if (t.priorite >= PRIORITE_HAUTE && !termine) {
+                Box(Modifier.padding(vertical = 2.dp)) {
+                    Pastille("${iconePriorite(t.priorite)} ${libellePriorite(t.priorite)}", couleurPriorite(t.priorite))
+                }
             }
             if (t.description.isNotBlank()) {
                 Text(

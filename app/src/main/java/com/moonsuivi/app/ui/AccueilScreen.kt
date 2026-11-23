@@ -38,8 +38,11 @@ fun AccueilScreen(ouvrir: (Ecran) -> Unit) {
     var editTache by remember { mutableStateOf<Tache?>(null) }
 
     val ouvertes = taches.filter { it.colonneId !in finies }
-    val enRetard = ouvertes.filter { val e = it.echeance; e != null && e < aujourdhui }.sortedBy { it.echeance }
+    val urgentes = ouvertes.filter { it.priorite >= PRIORITE_URGENTE }.sortedBy { it.echeance ?: Long.MAX_VALUE }
+    val enRetard = ouvertes.filter { val e = it.echeance; e != null && e < aujourdhui }
+        .sortedWith(compareByDescending<Tache> { it.priorite }.thenBy { it.echeance })
     val pourAujourdhui = ouvertes.filter { val e = it.echeance; e != null && e >= aujourdhui && e < aujourdhui + UN_JOUR }
+        .sortedByDescending { it.priorite }
     val semaine = ouvertes.filter { val e = it.echeance; e != null && e >= aujourdhui + UN_JOUR && e < aujourdhui + 7 * UN_JOUR }
         .sortedBy { it.echeance }
     val sujetsActifs = sujets.filter { it.statut != StatutSujet.CLOS }
@@ -67,6 +70,8 @@ fun AccueilScreen(ouvrir: (Ecran) -> Unit) {
                 )
                 Text(
                     when {
+                        urgentes.isNotEmpty() -> "🔥 ${urgentes.size} tâche(s) urgente(s)" +
+                            if (enRetard.isNotEmpty()) " · ${enRetard.size} en retard" else ""
                         enRetard.isNotEmpty() -> "${enRetard.size} tâche(s) en retard à rattraper."
                         pourAujourdhui.isNotEmpty() -> "${pourAujourdhui.size} tâche(s) prévue(s) aujourd'hui."
                         else -> "Rien d'urgent aujourd'hui 🎉"
@@ -98,17 +103,21 @@ fun AccueilScreen(ouvrir: (Ecran) -> Unit) {
             }
         }
 
+        if (urgentes.isNotEmpty()) {
+            item { SectionTitre("🔥 Urgentes (${urgentes.size})") }
+            items(urgentes.take(5), key = { "u${it.id}" }) { t -> CarteTache(t, nomSujet, nomContact) { editTache = t } }
+        }
         if (enRetard.isNotEmpty()) {
             item { SectionTitre("⚠ En retard") }
-            items(enRetard.take(5), key = { "r${it.id}" }) { t -> CarteTache(t, nomSujet, nomContact) { editTache = t } }
+            items(enRetard.filter { it.priorite < PRIORITE_URGENTE }.take(5), key = { "r${it.id}" }) { t -> CarteTache(t, nomSujet, nomContact) { editTache = t } }
         }
         if (pourAujourdhui.isNotEmpty()) {
             item { SectionTitre("Aujourd'hui") }
-            items(pourAujourdhui, key = { "j${it.id}" }) { t -> CarteTache(t, nomSujet, nomContact) { editTache = t } }
+            items(pourAujourdhui.filter { it.priorite < PRIORITE_URGENTE }, key = { "j${it.id}" }) { t -> CarteTache(t, nomSujet, nomContact) { editTache = t } }
         }
         if (semaine.isNotEmpty()) {
             item { SectionTitre("Dans les 7 prochains jours") }
-            items(semaine.take(5), key = { "s${it.id}" }) { t -> CarteTache(t, nomSujet, nomContact) { editTache = t } }
+            items(semaine.filter { it.priorite < PRIORITE_URGENTE }.take(5), key = { "s${it.id}" }) { t -> CarteTache(t, nomSujet, nomContact) { editTache = t } }
         }
 
         // Avancement du kanban
@@ -121,6 +130,16 @@ fun AccueilScreen(ouvrir: (Ecran) -> Unit) {
                 if (taches.isNotEmpty()) {
                     val faites = taches.count { it.colonneId in finies }
                     Indication("Avancement global : ${faites * 100 / taches.size} % des tâches terminées")
+                }
+            }
+        }
+
+        // Tâches ouvertes par priorité
+        item {
+            BlocAccueil("Tâches ouvertes par priorité") {
+                val max = PRIORITES.maxOfOrNull { (p, _) -> ouvertes.count { it.priorite == p } }?.coerceAtLeast(1) ?: 1
+                PRIORITES.reversed().forEach { (p, libelle) ->
+                    Barre("${iconePriorite(p)} $libelle", ouvertes.count { it.priorite == p }, max, couleurPriorite(p))
                 }
             }
         }

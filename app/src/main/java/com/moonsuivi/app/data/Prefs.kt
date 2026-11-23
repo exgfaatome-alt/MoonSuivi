@@ -64,6 +64,10 @@ object Prefs {
     }
     fun effacerAppelEnAttente(ctx: Context) = p(ctx).edit().remove("appel_num").apply()
 
+    // ---------- Apparence ----------
+    fun theme(ctx: Context): String = p(ctx).getString("theme", "SYSTEME") ?: "SYSTEME"
+    fun setTheme(ctx: Context, v: String) = p(ctx).edit().putString("theme", v).apply()
+
     // ---------- Astuces ----------
     fun astuceVue(ctx: Context, cle: String): Boolean = p(ctx).getBoolean("astuce_$cle", false)
     fun setAstuceVue(ctx: Context, cle: String) = p(ctx).edit().putBoolean("astuce_$cle", true).apply()

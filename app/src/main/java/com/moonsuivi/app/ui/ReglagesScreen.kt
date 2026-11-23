@@ -136,6 +136,18 @@ fun ReglagesScreen(onMaj: (InfoMaj) -> Unit) {
         }
 
         item {
+            Bloc("Apparence") {
+                ChoiceField(
+                    "Thème",
+                    ModeTheme.values().map { it to it.label },
+                    Apparence.mode.value,
+                    { Apparence.changer(ctx, it) }
+                )
+                Aide("« Comme le téléphone » suit le réglage clair / sombre d'Android. Raccourci : menu ☰ › 🌙 Mode sombre.")
+            }
+        }
+
+        item {
             Bloc("Rester actif en permanence") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Garder MoonSuivi actif en arrière-plan", modifier = Modifier.weight(1f))

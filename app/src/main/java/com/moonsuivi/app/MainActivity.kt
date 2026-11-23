@@ -6,16 +6,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.moonsuivi.app.calls.Lecteur
 import com.moonsuivi.app.data.Canal
@@ -41,7 +45,18 @@ class MainActivity : ComponentActivity() {
         MailWorker.planifier(this)
         ServiceActif.demarrer(this)
         if (savedInstanceState == null) lirePartage(intent)
-        setContent { MoonSuiviTheme { App(partage) } }
+        Apparence.charger(this)
+        setContent {
+            val sombre = Apparence.estSombre()
+            MoonSuiviTheme(sombre) {
+                val fond = MaterialTheme.colorScheme.surface.toArgb()
+                SideEffect {
+                    window.navigationBarColor = fond
+                    WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = !sombre
+                }
+                App(partage)
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -70,24 +85,6 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         Lecteur.stop()
     }
-}
-
-@Composable
-fun MoonSuiviTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = lightColorScheme(
-            primary = Color(0xFF3F51B5),
-            onPrimary = Color.White,
-            primaryContainer = Color(0xFFDDE1FF),
-            onPrimaryContainer = Color(0xFF001257),
-            secondary = Color(0xFF00897B),
-            onSecondary = Color.White,
-            secondaryContainer = Color(0xFFD0F0EA),
-            tertiary = Color(0xFFF57C00),
-            surfaceVariant = Color(0xFFECEEF6)
-        ),
-        content = content
-    )
 }
 
 private data class Onglet(val ecran: Ecran, val label: String, val icone: ImageVector)
@@ -171,6 +168,18 @@ fun App(partage: MutableState<Echange?>) {
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(start = 28.dp, top = 24.dp, bottom = 16.dp)
                     )
+                    val sombre = Apparence.estSombre()
+                    Row(
+                        Modifier.padding(start = 28.dp, end = 24.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🌙 Mode sombre", modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = sombre,
+                            onCheckedChange = { Apparence.changer(ctx, if (it) ModeTheme.SOMBRE else ModeTheme.CLAIR) }
+                        )
+                    }
+                    HorizontalDivider(Modifier.padding(bottom = 8.dp))
                     MENU.forEach { o ->
                         NavigationDrawerItem(
                             label = { Text(o.label) },
